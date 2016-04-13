@@ -9,6 +9,8 @@
 #include "vtkFiltersCoreModule.h" // For export macro
 #include "vtkDataSetAlgorithm.h"
 
+class vtkMatrix4x4;
+
 class vtkCudaReconstructionFilter : public vtkDataSetAlgorithm
 {
 public:
@@ -21,6 +23,10 @@ public:
   void SetDepthMap(vtkDataObject *depthMap);
   vtkDataObject *GetDepthMap();
 
+  // Description:
+  // Specify the depth map transform matrix.
+  void SetDepthMapMatrix(vtkMatrix4x4 *depthMapMatrix);
+
 //BTX
 protected:
   vtkCudaReconstructionFilter();
@@ -32,6 +38,8 @@ protected:
     vtkInformationVector *);
   virtual int RequestUpdateExtent(vtkInformation *, vtkInformationVector **,
     vtkInformationVector *);
+
+  vtkMatrix4x4 *DepthMapMatrix;
 
 private:
   vtkCudaReconstructionFilter(const vtkCudaReconstructionFilter&);  // Not implemented.

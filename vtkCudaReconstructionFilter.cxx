@@ -3,6 +3,7 @@
 #include "vtkDataSet.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkMatrix4x4.h"
 #include "vtkObjectFactory.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 
@@ -10,10 +11,13 @@
 
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 
+vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, DepthMapMatrix, vtkMatrix4x4);
+
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 {
   this->SetNumberOfInputPorts(2);
+  this->DepthMapMatrix = 0;
 }
 
 //----------------------------------------------------------------------------
@@ -57,8 +61,9 @@ int vtkCudaReconstructionFilter::RequestData(
   vtkDataSet *outGrid = vtkDataSet::SafeDownCast(
     outGridInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  if (!depthMap)
+  if (!depthMap || !this->DepthMapMatrix)
     {
+    std::cout << "Bad input." << std::endl;
     return 0;
     }
 

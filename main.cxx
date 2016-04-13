@@ -27,6 +27,7 @@
 
 #include "vtkColorTransferFunction.h"
 #include "vtkDataSetTriangleFilter.h"
+#include "vtkMatrix4x4.h"
 #include "vtkNew.h"
 #include "vtkPiecewiseFunction.h"
 #include "vtkPolyData.h"
@@ -57,10 +58,15 @@ int main(int, char *[])
   vtkStructuredGrid* grid = gridReader->GetOutput();
   std::cout << grid->GetNumberOfPoints() << std::endl;
 
+  // create depth map matrix
+  vtkNew<vtkMatrix4x4> depthMapMatrix;
+  depthMapMatrix->Identity();
+
   // reconstruction
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
-  cudaReconstructionFilter->SetDepthMap(depthMap);
   cudaReconstructionFilter->SetInputData(grid);
+  cudaReconstructionFilter->SetDepthMap(depthMap);
+  cudaReconstructionFilter->SetDepthMapMatrix(depthMapMatrix.Get());
   cudaReconstructionFilter->Update();
   vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(cudaReconstructionFilter->GetOutput());
 
