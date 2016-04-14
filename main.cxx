@@ -10,49 +10,65 @@
 #include "vtkCudaReconstructionFilter.h"
 #include "vtkStructuredGrid.h"
 #include "vtkThreshold.h"
+#include "vtkTransform.h"
+#include "vtkTransformFilter.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkVolume.h"
 #include "vtkVolumeProperty.h"
-#include "vtkXMLPolyDataReader.h"
+#include "vtkXMLImageDataReader.h"
 #include "vtkXMLStructuredGridReader.h"
 #include "vtkXMLStructuredGridWriter.h"
 
-bool ReadKRTD(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
+#include <vtksys/CommandLineArguments.hxx>
+#include <vtksys/SystemTools.hxx>
 
-int main(int, char *[])
+std::vector<int> g_gridDims(3);
+std::vector<double> g_gridSpacing(3);
+std::vector<double> g_gridOrigin(3);
+std::vector<double> g_gridVecX(3);
+std::vector<double> g_gridVecY(3);
+std::vector<double> g_gridVecZ(3);
+std::string g_depthMapFilename;
+std::string g_matrixKRTDFilename;
+std::string g_outputGridFilename;
+
+bool read_arguments(int argc, char ** argv);
+void init_arguments();
+bool read_krtd(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
+
+int main(int argc, char ** argv)
 {
   // arguments
-  int gridDims[3] = { 21, 21, 21 };
-  double gridSpacing[3] = { 1, 1, 1 };
-  double gridOrigin[3] = { -10, -10, -10 };
-  double gridVecX[3] = { 1, 0, 0 };
-  double gridVecY[3] = { 0, 1, 0 };
-  double gridVecZ[3] = { 0, 0, 1 };
+  if (!read_arguments(argc, argv))
+    {
+    //return EXIT_FAILURE;
+    }
+  init_arguments();
 
   // read depth map
-  vtkNew<vtkXMLPolyDataReader> depthMapReader;
-  depthMapReader->SetFileName("/home/kitware/dev/cudareconstruction_sources/data/depthmap.vtp");
+  vtkNew<vtkXMLImageDataReader> depthMapReader;
+  depthMapReader->SetFileName(g_depthMapFilename.c_str());
   depthMapReader->Update();
-  vtkPolyData* depthMap = depthMapReader->GetOutput();
+  vtkImageData* depthMap = depthMapReader->GetOutput();
   std::cout << depthMap->GetNumberOfPoints() << std::endl;
 
   // generate grid from arguments
   vtkNew<vtkImageData> grid;
-  grid->SetDimensions(gridDims);
-  grid->SetSpacing(gridSpacing);
-  grid->SetOrigin(gridOrigin);
+  grid->SetDimensions(&g_gridDims[0]);
+  grid->SetSpacing(&g_gridSpacing[0]);
+  grid->SetOrigin(&g_gridOrigin[0]);
   std::cout << grid->GetNumberOfPoints() << std::endl;
 
   // read depth map matrix
   vtkNew<vtkMatrix3x3> depthMapMatrixK;
   vtkNew<vtkMatrix4x4> depthMapMatrixTR;
-  bool res = ReadKRTD("/home/kitware/dev/cudareconstruction_sources/data/matrix.krtd",
-                      depthMapMatrixK.Get(), depthMapMatrixTR.Get());
+  bool res = read_krtd(g_matrixKRTDFilename, depthMapMatrixK.Get(), depthMapMatrixTR.Get());
   if (!res)
     {
-    std::cout << "Read krtd failed." << std::endl;
     return EXIT_FAILURE;
     }
+
+  std::cout << "Reconstruction filter." << std::endl;
 
   // reconstruction
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
@@ -60,14 +76,26 @@ int main(int, char *[])
   cudaReconstructionFilter->SetDepthMap(depthMap);
   cudaReconstructionFilter->SetDepthMapMatrixK(depthMapMatrixK.Get());
   cudaReconstructionFilter->SetDepthMapMatrixTR(depthMapMatrixTR.Get());
-  cudaReconstructionFilter->SetGridVecX(gridVecX);
-  cudaReconstructionFilter->SetGridVecY(gridVecY);
-  cudaReconstructionFilter->SetGridVecZ(gridVecZ);
+  cudaReconstructionFilter->SetGridVecX(&g_gridVecX[0]);
+  cudaReconstructionFilter->SetGridVecY(&g_gridVecY[0]);
+  cudaReconstructionFilter->SetGridVecZ(&g_gridVecZ[0]);
   cudaReconstructionFilter->Update();
-  vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(cudaReconstructionFilter->GetOutput());
+
+  std::cout << "Transform filter." << std::endl;
+
+  // todo compute transform according to gridVecs
+  vtkNew<vtkTransform> transform;
+  transform->Identity();
+  vtkNew<vtkTransformFilter> transformFilter;
+  transformFilter->SetInputConnection(cudaReconstructionFilter->GetOutputPort());
+  transformFilter->SetTransform(transform.Get());
+  transformFilter->Update();
+  vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
+
+  std::cout << "Write output." << std::endl;
 
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
-  gridWriter->SetFileName("/home/kitware/dev/cudareconstruction_sources/data/outputgrid.vts");
+  gridWriter->SetFileName(g_outputGridFilename.c_str());
   gridWriter->SetInputData(outputGrid);
   gridWriter->Write();
 
@@ -135,7 +163,7 @@ int main(int, char *[])
   return EXIT_SUCCESS;
 }
 
-bool ReadKRTD(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR)
+bool read_krtd(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR)
 {
   // open the file
   std::ifstream file(filename.c_str());
@@ -161,6 +189,8 @@ bool ReadKRTD(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixT
       }
     }
 
+  getline(file, line);
+
   // get matrix R
   for (int i = 0; i < 3; i++)
     {
@@ -174,6 +204,8 @@ bool ReadKRTD(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixT
       matrixTR->SetElement(i, j, value);
       }
     }
+
+  getline(file, line);
 
   // get matrix T
   getline(file, line);
@@ -193,4 +225,79 @@ bool ReadKRTD(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixT
   matrixTR->SetElement(3, 3, 1);
 
   return true;
+}
+
+//-----------------------------------------------------------------------------
+bool read_arguments(int argc, char ** argv)
+{
+  bool help = false;
+
+  vtksys::CommandLineArguments arg;
+  arg.Initialize(argc, argv);
+  typedef vtksys::CommandLineArguments argT;
+
+  arg.AddArgument("--gridDims", argT::MULTI_ARGUMENT, &g_gridDims, "Specify the input grid dimensions (required)");
+  arg.AddArgument("--gridSpacing", argT::MULTI_ARGUMENT, &g_gridSpacing, "Specify the input grid spacing (required)");
+  arg.AddArgument("--gridOrigin", argT::MULTI_ARGUMENT, &g_gridOrigin, "Specify the input grid origin (required)");
+  arg.AddArgument("--gridVecX", argT::MULTI_ARGUMENT, &g_gridVecX, "Specify the input grid direction X (required)");
+  arg.AddArgument("--gridVecY", argT::MULTI_ARGUMENT, &g_gridVecY, "Specify the input grid direction Y (required)");
+  arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Specify the input grid direction Z (required)");
+  arg.AddArgument("--depthMapFilename", argT::SPACE_ARGUMENT, &g_depthMapFilename, "Specify the depth map filename (required)");
+  arg.AddArgument("--matrixKRTDFilename", argT::SPACE_ARGUMENT, &g_matrixKRTDFilename, "Specify the depth map matrix filename (required)");
+  arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Specify the output grid filename (required)");
+  arg.AddBooleanArgument("--help", &help, "Print this help message");
+
+  int result = arg.Parse();
+  if (!result || help)
+    {
+    std::cout << arg.GetHelp() ;
+    return false;
+    }
+
+  if (g_depthMapFilename == "" || g_matrixKRTDFilename == "" || g_outputGridFilename == "")
+    {
+    std::cout << "Problem parsing arguments." << std::endl;
+    std::cout << arg.GetHelp() ;
+    return false;
+    }
+
+  return true;
+}
+
+//-----------------------------------------------------------------------------
+void init_arguments()
+{
+  g_gridDims.clear();
+  g_gridDims.push_back(100);
+  g_gridDims.push_back(100);
+  g_gridDims.push_back(100);
+
+  g_gridSpacing.clear();
+  g_gridSpacing.push_back(0.1);
+  g_gridSpacing.push_back(0.1);
+  g_gridSpacing.push_back(0.1);
+
+  g_gridOrigin.clear();
+  g_gridOrigin.push_back(-5);
+  g_gridOrigin.push_back(-5);
+  g_gridOrigin.push_back(-5);
+
+  g_gridVecX.clear();
+  g_gridVecX.push_back(1);
+  g_gridVecX.push_back(0);
+  g_gridVecX.push_back(0);
+
+  g_gridVecY.clear();
+  g_gridVecY.push_back(0);
+  g_gridVecY.push_back(1);
+  g_gridVecY.push_back(0);
+
+  g_gridVecZ.clear();
+  g_gridVecZ.push_back(0);
+  g_gridVecZ.push_back(0);
+  g_gridVecZ.push_back(1);
+
+  g_depthMapFilename = "/home/kitware/dev/cudareconstruction_sources/data/frame_0003_depth_map.0.vti";
+  g_matrixKRTDFilename = "/home/kitware/dev/cudareconstruction_sources/data/frame_0003.krtd";
+  g_outputGridFilename = "/home/kitware/dev/cudareconstruction_sources/data/outputgrid.vts";
 }

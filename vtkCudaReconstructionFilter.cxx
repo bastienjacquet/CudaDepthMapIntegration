@@ -1,8 +1,10 @@
 #include "vtkCudaReconstructionFilter.h"
 
+#include "vtkCell.h"
 #include "vtkCellData.h"
 #include "vtkDataSet.h"
 #include "vtkDoubleArray.h"
+#include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkMath.h"
@@ -20,13 +22,15 @@
 
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 
+vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, DepthMap, vtkImageData);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, DepthMapMatrixK, vtkMatrix3x3);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, DepthMapMatrixTR, vtkMatrix4x4);
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 {
-  this->SetNumberOfInputPorts(2);
+  this->SetNumberOfInputPorts(1);
+  this->DepthMap = 0;
   this->DepthMapMatrixK = 0;
   this->DepthMapMatrixTR = 0;
 }
@@ -42,23 +46,10 @@ vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
     {
     this->DepthMapMatrixTR->Delete();
     }
-}
-
-//----------------------------------------------------------------------------
-void vtkCudaReconstructionFilter::SetDepthMap(vtkDataObject *input)
-{
-  this->SetInputData(1, input);
-}
-
-//----------------------------------------------------------------------------
-vtkDataObject *vtkCudaReconstructionFilter::GetDepthMap()
-{
-  if (this->GetNumberOfInputConnections(1) < 1)
+  if (this->DepthMap)
     {
-    return NULL;
+    this->DepthMap->Delete();
     }
-
-  return this->GetExecutive()->GetInputData(1, 0);
 }
 
 //----------------------------------------------------------------------------
@@ -69,25 +60,22 @@ int vtkCudaReconstructionFilter::RequestData(
 {
   // get the info objects
   vtkInformation *inGridInfo = inputVector[0]->GetInformationObject(0);
-  vtkInformation *depthMapInfo = inputVector[1]->GetInformationObject(0);
   vtkInformation *outGridInfo = outputVector->GetInformationObject(0);
 
   // get the input and output
-  vtkDataSet *inGrid = vtkDataSet::SafeDownCast(
+  vtkImageData *inGrid = vtkImageData::SafeDownCast(
     inGridInfo->Get(vtkDataObject::DATA_OBJECT()));
-  vtkStructuredGrid *depthMap = vtkStructuredGrid::SafeDownCast(
-    depthMapInfo->Get(vtkDataObject::DATA_OBJECT()));
-  vtkDataSet *outGrid = vtkDataSet::SafeDownCast(
+  vtkImageData *outGrid = vtkImageData::SafeDownCast(
     outGridInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  if (!depthMap || !this->DepthMapMatrixK || !this->DepthMapMatrixTR)
+  if (!this->DepthMap || !this->DepthMapMatrixK || !this->DepthMapMatrixTR)
     {
     std::cout << "Bad input." << std::endl;
     return 0;
     }
 
   // get depth scalars
-  vtkDoubleArray* depths = vtkDoubleArray::SafeDownCast(depthMap->GetPointData()->GetArray("Depth"));
+  vtkDoubleArray* depths = vtkDoubleArray::SafeDownCast(this->DepthMap->GetPointData()->GetArray("Depths"));
   if (!depths)
     {
     std::cout << "Bad depths." << std::endl;
@@ -95,6 +83,8 @@ int vtkCudaReconstructionFilter::RequestData(
     }
 
   vtkIdType voxelsNb = inGrid->GetNumberOfCells();
+
+  std::cout << "Initialize output." << std::endl;
 
   // copy input grid to output grid
   outGrid->ShallowCopy(inGrid);
@@ -104,7 +94,10 @@ int vtkCudaReconstructionFilter::RequestData(
   outScalar->SetName("reconstruction_scalar");
   outScalar->SetNumberOfComponents(1);
   outScalar->SetNumberOfTuples(voxelsNb);
+  outScalar->FillComponent(0, 0);
   outGrid->GetCellData()->AddArray(outScalar.Get());
+
+  std::cout << "Create matrices." << std::endl;
 
   // create transforms from matrices
   vtkNew<vtkTransform> transformSceneToCamera;
@@ -122,19 +115,21 @@ int vtkCudaReconstructionFilter::RequestData(
   vtkNew<vtkTransform> transformCameraToDepthMap;
   transformCameraToDepthMap->SetMatrix(depthMapMatrixK.Get());
 
+  this->DepthMapMatrixTR->PrintSelf(std::cout, vtkIndent());
+  depthMapMatrixK->PrintSelf(std::cout, vtkIndent());
+
+  std::cout << "Fill output." << std::endl;
+
   for (vtkIdType i_vox = 0; i_vox < voxelsNb; i_vox++)
     {
-    // voxel bounds
-    double voxBounds[3];
-    inGrid->GetCellBounds(i_vox, voxBounds);
-
     // voxel center
-    double voxCenter[4];
-    for (int i = 0; i < 3; i++)
-      {
-      voxCenter[i] = (voxBounds[2 * i] + voxBounds[2 * i + 1]) / 2;
-      }
-    voxCenter[3] = 1;
+    // todo transform input image data into structured grid using this->GridVecX Y Z
+    double pcoords[3];
+    double voxCenter[3];
+    vtkCell* vox = inGrid->GetCell(i_vox);
+    int subId = vox->GetParametricCenter(pcoords);
+    double *weights = new double [inGrid->GetMaxCellSize()];
+    vox->EvaluateLocation(subId, pcoords, voxCenter, weights);
 
     // voxel center in camera coords
     double voxCameraCoords[3];
@@ -145,7 +140,7 @@ int vtkCudaReconstructionFilter::RequestData(
 
     // voxel center in depth map homogeneous coords
     double voxDepthMapCoordsHomo[3];
-    transformCameraToDepthMap->TransformPoint(voxCameraCoords, voxDepthMapCoordsHomo);
+    transformCameraToDepthMap->TransformVector(voxCameraCoords, voxDepthMapCoordsHomo);
 
     // voxel center in depth map coords
     double voxDepthMapCoords[2];
@@ -155,17 +150,53 @@ int vtkCudaReconstructionFilter::RequestData(
     // compute distance from depth map
     // todo improve with interpolation
     int ijk[3];
-    ijk[0] = round(voxDepthMapCoords[0]);
-    ijk[1] = round(voxDepthMapCoords[1]);
+    ijk[0] = round(voxDepthMapCoords[0] / 1900 * 479);
+    ijk[1] = round(voxDepthMapCoords[1] / 1000 * 269);
     ijk[2] = 0;
+
     int dim[3];
-    depthMap->GetDimensions(dim);
-    vtkIdType id = vtkStructuredData::ComputePointId(dim, ijk);
-    if (id < depthMap->GetNumberOfPoints())
+    this->DepthMap->GetDimensions(dim);
+
+    if (ijk[0] >= 0 && ijk[0] < dim[0] && ijk[1] >= 0 && ijk[1] < dim[1])
       {
+
+      vtkIdType id = vtkStructuredData::ComputePointId(dim, ijk);
+
+      if (0 > id && id >= this->DepthMap->GetNumberOfPoints())
+        {
+        std::cout << "pb x" << std::endl;
+        }
+
       double depth = depths->GetValue(id);
-      outScalar->SetValue(i_vox, distanceVoxCam - depth);
+      double prevVal = outScalar->GetValue(i_vox);
+
+      // compute new val
+      // todo replace by class function
+      double newVal = prevVal;
+      if (std::abs(distanceVoxCam - depth) != 0)
+        {
+        newVal += 1 / std::abs(distanceVoxCam - depth);
+        }
+      else
+        {
+        newVal += 10;
+        }
+
+      //std::cout << "depth " << depth << std::endl;
+      //std::cout << "val " << prevVal << " -> " << newVal << std::endl;
+
+      outScalar->SetValue(i_vox, newVal);
       }
+    /*
+      std::cout << "voxCenter " << voxCenter[0] << " " << voxCenter[1] << " " << voxCenter[2] << std::endl;
+      std::cout << "voxCameraCoords " << voxCameraCoords[0] << " " << voxCameraCoords[1] << " " << voxCameraCoords[2] << std::endl;
+      std::cout << "voxDepthMapCoordsHomo " << voxDepthMapCoordsHomo[0] << " " << voxDepthMapCoordsHomo[1] << " " << voxDepthMapCoordsHomo[2] << " " << voxDepthMapCoordsHomo[3] << std::endl;
+      std::cout << "voxDepthMapCoords " << voxDepthMapCoords[0] << " " << voxDepthMapCoords[1] << std::endl;
+      std::cout << "ijk " << ijk[0] << " " << ijk[1] << " " << ijk[2] << std::endl;
+      std::cout << "id " << id << std::endl;
+      std::cout << "distanceVoxCam " << distanceVoxCam << std::endl;
+      std::cout << std::endl;
+     * */
     }
 
   return 1;
@@ -177,6 +208,14 @@ int vtkCudaReconstructionFilter::RequestInformation(
   vtkInformationVector **inputVector,
   vtkInformationVector *outputVector)
 {
+  // get the info objects
+  vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
+  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(),
+               inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()),
+               6);
+
   return 1;
 }
 
@@ -194,6 +233,5 @@ void vtkCudaReconstructionFilter::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os,indent);
 
-  vtkDataObject *depthMap = this->GetDepthMap();
-  os << indent << "Depth Map: " << depthMap << "\n";
+  os << indent << "Depth Map: " << this->DepthMap << "\n";
 }

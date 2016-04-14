@@ -7,22 +7,22 @@
 #define vtkCudaReconstructionFilter_h
 
 #include "vtkFiltersCoreModule.h" // For export macro
-#include "vtkDataSetAlgorithm.h"
+#include "vtkImageAlgorithm.h"
 
+class vtkImageData;
 class vtkMatrix3x3;
 class vtkMatrix4x4;
 
-class vtkCudaReconstructionFilter : public vtkDataSetAlgorithm
+class vtkCudaReconstructionFilter : public vtkImageAlgorithm
 {
 public:
   static vtkCudaReconstructionFilter *New();
-  vtkTypeMacro(vtkCudaReconstructionFilter,vtkDataSetAlgorithm);
+  vtkTypeMacro(vtkCudaReconstructionFilter,vtkImageAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
   // Description:
   // Specify the depth map.
-  void SetDepthMap(vtkDataObject *depthMap);
-  vtkDataObject *GetDepthMap();
+  void SetDepthMap(vtkImageData *depthMap);
 
   // Description:
   // Specify the depth map transform matrix: K, R, T.
@@ -47,6 +47,7 @@ protected:
   virtual int RequestUpdateExtent(vtkInformation *, vtkInformationVector **,
     vtkInformationVector *);
 
+  vtkImageData *DepthMap;
   vtkMatrix3x3 *DepthMapMatrixK;
   vtkMatrix4x4 *DepthMapMatrixTR;
   double GridVecX[3];
