@@ -49,6 +49,11 @@ protected:
     vtkDoubleArray* outScalar);
   static void FunctionCumul(double diff, double& val);
 
+  static int ComputeWithCuda(
+    vtkMatrix4x4 *gridMatrix, double gridOrig[3], int gridDims[3], double gridSpacing[3],
+    vtkImageData* depthMap, vtkMatrix3x3 *depthMapMatrixK, vtkMatrix4x4 *depthMapMatrixTR,
+    vtkDoubleArray* outScalar);
+
   vtkImageData *DepthMap;
   vtkMatrix3x3 *DepthMapMatrixK;
   vtkMatrix4x4 *DepthMapMatrixTR;
