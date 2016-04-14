@@ -22,6 +22,7 @@
 #include <vtksys/CommandLineArguments.hxx>
 #include <vtksys/SystemTools.hxx>
 
+// arguments
 std::vector<int> g_gridDims(3);
 std::vector<double> g_gridSpacing(3);
 std::vector<double> g_gridOrigin(3);
@@ -33,16 +34,21 @@ std::string g_matrixKRTDFilename;
 std::string g_outputGridFilename;
 
 bool read_arguments(int argc, char ** argv);
-void init_arguments();
 bool read_krtd(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
+
+// todo remove
+void init_arguments();
 
 int main(int argc, char ** argv)
 {
   // arguments
+  // todo activate read_arguments and deactivate init_arguments
+  /*
   if (!read_arguments(argc, argv))
     {
-    //return EXIT_FAILURE;
+    return EXIT_FAILURE;
     }
+   * */
   init_arguments();
 
   // read depth map
@@ -50,14 +56,12 @@ int main(int argc, char ** argv)
   depthMapReader->SetFileName(g_depthMapFilename.c_str());
   depthMapReader->Update();
   vtkImageData* depthMap = depthMapReader->GetOutput();
-  std::cout << depthMap->GetNumberOfPoints() << std::endl;
 
   // generate grid from arguments
   vtkNew<vtkImageData> grid;
   grid->SetDimensions(&g_gridDims[0]);
   grid->SetSpacing(&g_gridSpacing[0]);
   grid->SetOrigin(&g_gridOrigin[0]);
-  std::cout << grid->GetNumberOfPoints() << std::endl;
 
   // read depth map matrix
   vtkNew<vtkMatrix3x3> depthMapMatrixK;
@@ -68,6 +72,12 @@ int main(int argc, char ** argv)
     return EXIT_FAILURE;
     }
 
+  // todo compute matrix
+  // compute transform matrix from gridVecs
+  vtkNew<vtkMatrix4x4> gridMatrix;
+  gridMatrix->Identity();
+
+  // todo remove
   std::cout << "Reconstruction filter." << std::endl;
 
   // reconstruction
@@ -76,22 +86,22 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetDepthMap(depthMap);
   cudaReconstructionFilter->SetDepthMapMatrixK(depthMapMatrixK.Get());
   cudaReconstructionFilter->SetDepthMapMatrixTR(depthMapMatrixTR.Get());
-  cudaReconstructionFilter->SetGridVecX(&g_gridVecX[0]);
-  cudaReconstructionFilter->SetGridVecY(&g_gridVecY[0]);
-  cudaReconstructionFilter->SetGridVecZ(&g_gridVecZ[0]);
+  cudaReconstructionFilter->SetGridMatrix(gridMatrix.Get());
   cudaReconstructionFilter->Update();
 
+  // todo remove
   std::cout << "Transform filter." << std::endl;
 
   // todo compute transform according to gridVecs
   vtkNew<vtkTransform> transform;
-  transform->Identity();
+  transform->SetMatrix(gridMatrix.Get());
   vtkNew<vtkTransformFilter> transformFilter;
   transformFilter->SetInputConnection(cudaReconstructionFilter->GetOutputPort());
   transformFilter->SetTransform(transform.Get());
   transformFilter->Update();
   vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
 
+  // todo remove
   std::cout << "Write output." << std::endl;
 
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
@@ -101,6 +111,7 @@ int main(int argc, char ** argv)
 
   ////////// Setup visualization ////////
 
+  // todo remove
   /*
   // structured to tetra
   vtkNew<vtkThreshold> thresholdFilter;
@@ -169,6 +180,7 @@ bool read_krtd(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrix
   std::ifstream file(filename.c_str());
   if (!file.is_open())
     {
+    // todo error message
     std::cout << "Unable to open krtd file." << std::endl;
     return false;
     }
@@ -256,6 +268,7 @@ bool read_arguments(int argc, char ** argv)
 
   if (g_depthMapFilename == "" || g_matrixKRTDFilename == "" || g_outputGridFilename == "")
     {
+    // todo error message
     std::cout << "Problem parsing arguments." << std::endl;
     std::cout << arg.GetHelp() ;
     return false;
