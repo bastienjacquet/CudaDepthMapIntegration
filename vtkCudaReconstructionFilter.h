@@ -9,6 +9,10 @@
 #include "vtkFiltersCoreModule.h" // For export macro
 #include "vtkImageAlgorithm.h"
 
+#include "ReconstructionData.h"
+
+#include <vector>
+
 class vtkDoubleArray;
 class vtkImageData;
 class vtkMatrix3x3;
@@ -21,6 +25,9 @@ public:
   vtkTypeMacro(vtkCudaReconstructionFilter,vtkImageAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
+  void UseCudaOn();
+  void UseCudaOff();
+
   // Description:
   // Specify the depth map.
   void SetDepthMap(vtkImageData *depthMap);
@@ -30,6 +37,9 @@ public:
   void SetDepthMapMatrixK(vtkMatrix3x3 *depthMapMatrixK);
   void SetDepthMapMatrixTR(vtkMatrix4x4 *depthMapMatrixTR);
   void SetGridMatrix(vtkMatrix4x4 *gridMatrix);
+  // Description:
+  // List all data with depthMap and KRT matrix
+  void SetDataList(std::vector<ReconstructionData*> list);
 
 //BTX
 protected:
@@ -54,10 +64,9 @@ protected:
     vtkImageData* depthMap, vtkMatrix3x3 *depthMapMatrixK, vtkMatrix4x4 *depthMapMatrixTR,
     vtkDoubleArray* outScalar);
 
-  vtkImageData *DepthMap;
-  vtkMatrix3x3 *DepthMapMatrixK;
-  vtkMatrix4x4 *DepthMapMatrixTR;
+  std::vector<ReconstructionData*> DataList;
   vtkMatrix4x4 *GridMatrix;
+  bool useCuda;
 
 private:
   vtkCudaReconstructionFilter(const vtkCudaReconstructionFilter&);  // Not implemented.

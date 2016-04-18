@@ -25,6 +25,8 @@ cuda_add_executable(
     main.cxx
     vtkCudaReconstructionFilter.h
     vtkCudaReconstructionFilter.cxx
+    ReconstructionData.h
+    ReconstructionData.cxx
     CudaReconstruction.cu)
 
 target_link_libraries(${PROJECT_NAME} ${VTK_LIBRARIES})

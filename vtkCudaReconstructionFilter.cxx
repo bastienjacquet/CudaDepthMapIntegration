@@ -21,10 +21,6 @@
 #include <vector>
 
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
-
-vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, DepthMap, vtkImageData);
-vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, DepthMapMatrixK, vtkMatrix3x3);
-vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, DepthMapMatrixTR, vtkMatrix4x4);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
 
 int cuda_reconstruction(
@@ -36,31 +32,29 @@ int cuda_reconstruction(
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 {
   this->SetNumberOfInputPorts(1);
-  this->DepthMap = 0;
-  this->DepthMapMatrixK = 0;
-  this->DepthMapMatrixTR = 0;
   this->GridMatrix = 0;
+  this->useCuda = false;
 }
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
 {
-  if (this->DepthMapMatrixK)
-    {
-    this->DepthMapMatrixK->Delete();
-    }
-  if (this->DepthMapMatrixTR)
-    {
-    this->DepthMapMatrixTR->Delete();
-    }
-  if (this->GridMatrix)
-    {
-    this->GridMatrix->Delete();
-    }
-  if (this->DepthMap)
-    {
-    this->DepthMap->Delete();
-    }
+  this->DataList.clear();
+}
+
+void vtkCudaReconstructionFilter::SetDataList(std::vector<ReconstructionData*> list)
+{
+  this->DataList = list;
+}
+
+void vtkCudaReconstructionFilter::UseCudaOn()
+{
+  this->useCuda = true;
+}
+
+void vtkCudaReconstructionFilter::UseCudaOff()
+{
+  this->useCuda = false;
 }
 
 //----------------------------------------------------------------------------
@@ -79,10 +73,10 @@ int vtkCudaReconstructionFilter::RequestData(
   vtkImageData *outGrid = vtkImageData::SafeDownCast(
     outGridInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  if (!this->DepthMap || !this->DepthMapMatrixK || !this->DepthMapMatrixTR)
+  if (this->DataList.size() == 0)
     {
     // todo error message
-    std::cout << "Bad input." << std::endl;
+    std::cerr << "Error, input not set." << std::endl;
     return 0;
     }
 
@@ -108,21 +102,36 @@ int vtkCudaReconstructionFilter::RequestData(
   outGrid->GetCellData()->AddArray(outScalar.Get());
 
   // computation
-  bool useCuda = true;
-  if (!useCuda)
+  if (!this->useCuda)
     {
-    vtkCudaReconstructionFilter::ComputeWithoutCuda(
-      this->GridMatrix, gridOrig, gridDims, gridSpacing,
-      this->DepthMap, this->DepthMapMatrixK, this->DepthMapMatrixTR,
-      outScalar.Get());
+      for (int i = 0; i < this->DataList.size(); i++)
+        {
+        ReconstructionData* currentData = this->DataList[i];
+        vtkCudaReconstructionFilter::ComputeWithoutCuda(
+          this->GridMatrix, gridOrig, gridDims, gridSpacing,
+          currentData->GetDepthMap(), currentData->GetMatrixK(), currentData->GetMatrixTR(),
+          outScalar.Get());
+        }
     }
   else
     {
-    vtkCudaReconstructionFilter::ComputeWithCuda(
-      this->GridMatrix, gridOrig, gridDims, gridSpacing,
-      this->DepthMap, this->DepthMapMatrixK, this->DepthMapMatrixTR,
-      outScalar.Get());
+      for (int i = 0; i < this->DataList.size(); i++)
+      {
+        ReconstructionData* currentData = this->DataList[i];
+        vtkCudaReconstructionFilter::ComputeWithCuda(
+          this->GridMatrix, gridOrig, gridDims, gridSpacing,
+          currentData->GetDepthMap(), currentData->GetMatrixK(), currentData->GetMatrixTR(),
+          outScalar.Get());
+      }
     }
+
+  //std::vector<double> test;
+  //for (int i = 0; i < outScalar->GetMaxId() - 1; i++)
+  //{
+  //  test.push_back(*outScalar->GetTuple(i));
+  //  if (test[i] > 0.0)
+  //    std::cout << test[i] << std::endl;
+  //}
 
   return 1;
 }
@@ -271,7 +280,7 @@ int vtkCudaReconstructionFilter::ComputeWithCuda(
     return 0;
     }
   double* copy_depths;
-
+  copy_depths = new double[3];
   // call host function in cuda file
   cuda_reconstruction(copy_gridMatrix, gridOrig, gridDims, gridSpacing,
                       depthMapDims, copy_depths, copy_depthMapMatrixK, copy_depthMapMatrixTR,
@@ -314,5 +323,5 @@ void vtkCudaReconstructionFilter::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os,indent);
 
-  os << indent << "Depth Map: " << this->DepthMap << "\n";
+  //os << indent << "Depth Map: " << this->DepthMap << "\n";
 }
