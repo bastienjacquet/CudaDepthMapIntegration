@@ -243,18 +243,20 @@ int vtkCudaReconstructionFilter::ComputeWithoutCuda(
 //----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::FunctionCumul(double diff, double& val)
 {
-  if (std::abs(diff) != 0)
+  //if (std::abs(diff) != 0)
     {
-    val += 1 / std::abs(diff);
+      val += 10 - 0.5*std::abs(diff);
     }
-  else
-    {
-    val += 10;
-    }
-  if (val > 100)
-    {
-    val = 100;
-    }
+  //else
+  //  {
+  //  val += 10;
+  //  }
+  //if (val > 100)
+  //  {
+  //  val = 100;
+  //  }
+  if (val < 0)
+    val = 0;
 }
 
 //----------------------------------------------------------------------------
