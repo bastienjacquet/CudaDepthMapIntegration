@@ -100,7 +100,9 @@ int main(int argc, char ** argv)
   gridWriter->SetInputData(outputGrid);
   gridWriter->Write();
 
-  // TODo clean pointers
+  // Clean pointers
+  g_gridMatrix->Delete();
+  g_dataList.clear();
 
   return EXIT_SUCCESS;
 }
