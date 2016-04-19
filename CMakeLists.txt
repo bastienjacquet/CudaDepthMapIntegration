@@ -17,7 +17,7 @@ include(${VTK_USE_FILE})
 find_package(CUDA REQUIRED)
 
 # Pass options to NVCC
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_20,code=sm_20)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} --gpu-architecture sm_20)
 
 # Specify target & source files to compile
 cuda_add_executable(

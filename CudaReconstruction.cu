@@ -1,6 +1,8 @@
 #ifndef _CudaReconstruction_
 #define _CudaReconstruction_
 
+#include <stdio.h>
+
 __global__ void kernel(int *a, int *b)
 {
   a[threadIdx.x] = b[threadIdx.x];
