@@ -13,7 +13,8 @@ public:
   ~ReconstructionData();
 
   vtkImageData* GetDepthMap();
-  vtkMatrix3x3* GetMatrixK();
+  vtkMatrix3x3* Get3MatrixK();
+  vtkMatrix4x4* Get4MatrixK();
   vtkMatrix4x4* GetMatrixTR();
 
   void SetDepthMap(vtkImageData* data);
@@ -23,6 +24,7 @@ public:
 private:
   vtkImageData* depthMap;
   vtkMatrix3x3* matrixK;
+  vtkMatrix4x4* matrix4K;
   vtkMatrix4x4* matrixTR;
 };
 

@@ -22,9 +22,14 @@ vtkImageData* ReconstructionData::GetDepthMap()
   return this->depthMap;
 }
 
-vtkMatrix3x3* ReconstructionData::GetMatrixK()
+vtkMatrix3x3* ReconstructionData::Get3MatrixK()
 {
   return this->matrixK;
+}
+
+vtkMatrix4x4* ReconstructionData::Get4MatrixK()
+{
+  return this->matrix4K;
 }
 
 vtkMatrix4x4* ReconstructionData::GetMatrixTR()
@@ -40,6 +45,15 @@ void ReconstructionData::SetDepthMap(vtkImageData* data)
 void ReconstructionData::SetMatrixK(vtkMatrix3x3* matrix)
 {
   this->matrixK = matrix;
+  this->matrix4K = vtkMatrix4x4::New();
+  this->matrix4K->Identity();
+  for (int i = 0; i < 3; i++)
+  {
+    for (int j = 0; j < 3; j++)
+    {
+      this->matrix4K->SetElement(i, j, this->matrixK->GetElement(i, j));
+    }
+  }
 }
 
 void ReconstructionData::SetMatrixTR(vtkMatrix4x4* matrix)
