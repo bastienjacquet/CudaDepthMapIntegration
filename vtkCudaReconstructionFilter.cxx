@@ -107,20 +107,27 @@ int vtkCudaReconstructionFilter::RequestData(
   // computation
   if (!this->useCuda)
     {
-      for (int i = 0; i < this->DataList.size(); i++)
-        {
-        ReconstructionData* currentData = this->DataList[i];
-        vtkCudaReconstructionFilter::ComputeWithoutCuda(
-          this->GridMatrix, gridOrig, gridDims, gridSpacing,
-          currentData->GetDepthMap(), currentData->Get3MatrixK(), currentData->GetMatrixTR(),
-          outScalar.Get());
-        }
+    clock_t start = clock();
+    for (int i = 0; i < this->DataList.size(); i++)
+      {
+      ReconstructionData* currentData = this->DataList[i];
+      vtkCudaReconstructionFilter::ComputeWithoutCuda(
+        this->GridMatrix, gridOrig, gridDims, gridSpacing,
+        currentData->GetDepthMap(), currentData->Get3MatrixK(), currentData->GetMatrixTR(),
+        outScalar.Get());
+      }
+    clock_t end = clock();
+    double diff = (double)(end - start) / CLOCKS_PER_SEC;
+    std::cout << "WITHOUT CUDA : " << diff << " s" << std::endl;
     }
   else
     {
-     reconstruction(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing, outScalar.Get());
+    clock_t start = clock();
+    reconstruction(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing, outScalar.Get());
+    clock_t end = clock();
+    double diff = (double)(end - start) / CLOCKS_PER_SEC;
+    std::cout << "WITH CUDA : " << diff << " s" << std::endl;
     }
-
 
   return 1;
 }
