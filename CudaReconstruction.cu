@@ -276,7 +276,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
     CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, matrix4Size * sizeof(double), cudaMemcpyHostToDevice));
 
     // run code into device
-    depthMapKernel << <dimGrid, dimBlock >> >(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
+    depthMapKernel <<<dimGrid, dimBlock >>>(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
 
     // Wait that all threads have finished
     CudaErrorCheck(cudaDeviceSynchronize());
@@ -294,65 +294,14 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   doubleTableToVtkDoubleArray(h_outScalar, io_outScalar);
 
   // Clean memory
-  cudaFree(d_outScalar);
   delete(h_gridMatrix);
   delete(h_outScalar);
+  cudaFree(d_outScalar);
   cudaFree(d_depthMap);
   cudaFree(d_matrixK);
   cudaFree(d_matrixRT);
 
   return 1;
 }
-
-
-
-
-
-// --------------------------------TEST----------------------------------------
-// ----------------------------------------------------------------------------
-__global__ void kernel(int *a, int *b)
-{
-  a[threadIdx.x] = b[threadIdx.x];
-}
-// ----------------------------------------------------------------------------
-int cuda_reconstruction(
-  double h_gridMatrix[16], double h_gridOrig[3], int h_gridDims[3], double h_gridSpacing[3],
-  int h_depthMapDims[3], double* h_depths, double h_depthMapMatrixK[16], double h_depthMapMatrixTR[16],
-  double* h_outScalar)
-{
-  const int N = 5;
-
-  // create data into host
-  int h_a[N] = { 0, 0, 0, 0, 0 };
-  int h_b[N] = { 1, 2, 4, 5, 2 };
-
-  // tranfer data from host to device
-  int *d_a, *d_b;
-  cudaMalloc((void**)&d_a, N * sizeof(int));
-  cudaMalloc((void**)&d_b, N * sizeof(int));
-  CudaErrorCheck(cudaMemcpy(d_a, h_a, N * sizeof(int), cudaMemcpyHostToDevice));
-  CudaErrorCheck(cudaMemcpy(d_b, h_b, N * sizeof(int), cudaMemcpyHostToDevice));
-
-  // organize threads into blocks and grids
-  dim3 dimBlock(N, 1, 1); // nb threads per blocks
-  dim3 dimGrid(1, 1, 1); // nb blocks
-
-  // run code into device
-  kernel << <dimGrid, dimBlock >> >(d_a, d_b);
-
-  // transfer data from device to host
-  CudaErrorCheck(cudaMemcpy(h_a, d_a, N * sizeof(int), cudaMemcpyDeviceToHost));
-  for (int i = 0; i < N; i++)
-  {
-    h_outScalar[i] = h_a[i];
-  }
-
-  // free memory
-  cudaFree(d_a);
-  cudaFree(d_b);
-
-  return 1;
-}
-
 
 #endif
