@@ -92,15 +92,15 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
   computeVoxelCenter(voxelCoordinate, voxelCenterTemp);
 
   // Transform voxel from grid to real coord
-  double* voxelCenter = new double[3];
+  double voxelCenter[3];
   transformFrom4Matrix(c_gridMatrix, voxelCenterTemp, voxelCenter);
 
   // Transform voxel center from real coord to camera coords
-  double* voxelCenterCamera = new double[3];
-  transformFrom4Matrix(matrixTR, voxelCenter, voxelCenterCamera); // todo add translation (+1 h)
+  double voxelCenterCamera[3];
+  transformFrom4Matrix(matrixTR, voxelCenter, voxelCenterCamera);
 
   // Transform voxel center from camera coords to depth map homogeneous coords
-  double* voxelCenterHomogen = new double[3];
+  double voxelCenterHomogen[3];
   transformFrom4Matrix(matrixK, voxelCenterCamera, voxelCenterHomogen);
 
   // Get voxel center on depth map coord
@@ -116,11 +116,6 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
 
   // Get the distance between voxel and camera
   double realDepth = norm(voxelCenterCamera);
-
-  // Clean memory (pointers that are no longer used)
-  delete(voxelCenter);
-  delete(voxelCenterCamera);
-  delete(voxelCenterHomogen);
 
   // Test if coordinate are inside depth map
   if (pixel[0] < 0 || pixel[1] < 0 || pixel[2] < 0 ||
@@ -263,7 +258,6 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
     CudaErrorCheck(cudaDeviceSynchronize());
 
     // clean code
-
     delete(h_depthMap);
     delete(h_matrixK);
     delete(h_matrixRT);
