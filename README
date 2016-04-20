@@ -1,0 +1,19 @@
+www.kitware.fr
+Aggregation of depth map according to ray potential function
+
+
+********************************************
+                GPU algorithm
+********************************************
+TODO
+
+
+
+********************************************
+              DEBUG CUDA CODE
+********************************************
+1. Download and install NSight Visual Studio
+---- Probably need to create nvidia account to download
+---- https://developer.nvidia.com/gameworksdownload#?dn=nsight-visual-studio-edition-4-0-0
+2. Follow this nvidia tutorial
+---- http://docs.nvidia.com/nsight-visual-studio-edition/4.0/Nsight_Visual_Studio_Edition_User_Guide.htm#Debugging_CUDA_Application.htm%3FTocPath%3DCUDA%20Debugger|_____1
