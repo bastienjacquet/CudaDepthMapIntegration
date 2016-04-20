@@ -36,6 +36,9 @@ public:
   // Specify the depth map transform matrix: K, R, T.
   void SetDepthMapMatrixK(vtkMatrix3x3 *depthMapMatrixK);
   void SetDepthMapMatrixTR(vtkMatrix4x4 *depthMapMatrixTR);
+  // Description
+  // Define the matrix transform to orientate the output volume
+  // to the right axis
   void SetGridMatrix(vtkMatrix4x4 *gridMatrix);
   // Description:
   // List all data with depthMap and KRT matrix
@@ -57,11 +60,8 @@ protected:
     vtkMatrix4x4 *gridMatrix, double gridOrig[3], int gridDims[3], double gridSpacing[3],
     vtkImageData* depthMap, vtkMatrix3x3 *depthMapMatrixK, vtkMatrix4x4 *depthMapMatrixTR,
     vtkDoubleArray* outScalar);
-  static void FunctionCumul(double diff, double& val);
 
-  int ComputeWithCuda(
-    vtkMatrix4x4 *gridMatrix, double gridOrig[3], int gridDims[3], double gridSpacing[3],
-    vtkImageData* depthMap, vtkDoubleArray* outScalar);
+  static void FunctionCumul(double diff, double& val);
 
   std::vector<ReconstructionData*> DataList;
   vtkMatrix4x4 *GridMatrix;

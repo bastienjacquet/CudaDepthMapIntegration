@@ -24,11 +24,7 @@
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
 
-int cuda_reconstruction(
-    double h_gridMatrix[16], double h_gridOrig[3], int h_gridDims[3], double h_gridSpacing[3],
-    int h_depthMapDims[3], double* h_depths, double h_depthMapMatrixK[16], double h_depthMapMatrixTR[16],
-    double* h_outScalar);
-
+// Define the function signature in .cu file in order to be recognize inside the file
 int reconstruction(std::vector<ReconstructionData*> i_dataList, vtkMatrix4x4* i_gridMatrix, 
   int h_gridDims[3], double h_gridOrig[3], double h_gridSpacing[3], vtkDoubleArray* h_outScalar);
 
@@ -248,46 +244,6 @@ void vtkCudaReconstructionFilter::FunctionCumul(double diff, double& val)
   val += shift;
 }
 
-//----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::ComputeWithCuda(
-    vtkMatrix4x4 *gridMatrix, double gridOrig[3], int gridDims[3], double gridSpacing[3],
-    vtkImageData* depthMap, vtkDoubleArray* outScalar)
-{
-
-  int res = reconstruction(this->DataList, gridMatrix, gridDims, gridOrig, gridSpacing, outScalar);
-
-  //// todo convert gridMatrix, depthMapMatrixK, depthMapMatrixTR, outScalar into double*
-  //double copy_gridMatrix[16];
-  //double copy_depthMapMatrixK[16];
-  //double copy_depthMapMatrixTR[16];
-  //double copy_outScalar[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-
-  //// todo convert depthMap into double* + dims
-  //int depthMapDims[3];
-  //// todo this line is already done in ComputeWithoutCuda, must factorize it
-  //vtkDoubleArray* depths = vtkDoubleArray::SafeDownCast(depthMap->GetPointData()->GetArray("Depths"));
-  //if (!depths)
-  //  {
-  //  // todo error message
-  //    std::cout << "Bad depths." << std::endl;
-  //  return 0;
-  //  }
-  //double* copy_depths;
-  //copy_depths = new double[3];
-  //// call host function in cuda file
-  //cuda_reconstruction(copy_gridMatrix, gridOrig, gridDims, gridSpacing,
-  //                    depthMapDims, copy_depths, copy_depthMapMatrixK, copy_depthMapMatrixTR,
-  //                    copy_outScalar);
-
-  //// todo fill outScalar with copy_outScalar, maybe can be done directly
-  //std::cout << copy_outScalar[0] << std::endl;
-  //std::cout << copy_outScalar[1] << std::endl;
-  //std::cout << copy_outScalar[2] << std::endl;
-  //std::cout << copy_outScalar[3] << std::endl;
-  //std::cout << copy_outScalar[4] << std::endl;
-
-  return 1;
-}
 
 //----------------------------------------------------------------------------
 int vtkCudaReconstructionFilter::RequestInformation(
