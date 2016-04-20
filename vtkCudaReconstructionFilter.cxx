@@ -19,6 +19,7 @@
 
 #include <cmath>
 #include <vector>
+#include <time.h>
 
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
@@ -45,16 +46,19 @@ vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
   this->DataList.clear();
 }
 
+//----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::SetDataList(std::vector<ReconstructionData*> list)
 {
   this->DataList = list;
 }
 
+//----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::UseCudaOn()
 {
   this->useCuda = true;
 }
 
+//----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::UseCudaOff()
 {
   this->useCuda = false;
@@ -206,7 +210,6 @@ int vtkCudaReconstructionFilter::ComputeWithoutCuda(
     voxDepthMapCoords[1] = voxDepthMapCoordsHomo[1] / voxDepthMapCoordsHomo[2];
 
     // compute depth from depth map
-    // todo improve with interpolation
     int ijk[3];
     ijk[0] = round(voxDepthMapCoords[0]);
     ijk[1] = round(voxDepthMapCoords[1]);
