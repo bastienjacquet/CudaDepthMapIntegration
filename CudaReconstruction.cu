@@ -30,20 +30,13 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 
 
 // ----------------------------------------------------------------------------
-__device__ void transformFrom4Matrix(double matrix[16], double point[3], double* output)
+__device__ void transformFrom4Matrix(double matrix[16], double point[3], double output[3])
 {
   output[0] = matrix[0] * point[0] + matrix[1] * point[1] + matrix[2] * point[2] + matrix[3];
   output[1] = matrix[4] * point[0] + matrix[5] * point[1] + matrix[6] * point[2] + matrix[7];
   output[2] = matrix[8] * point[0] + matrix[9] * point[1] + matrix[10] * point[2] + matrix[11];
 }
 
-// ----------------------------------------------------------------------------
-__device__ void transformFrom3Matrix(double matrix[9], double point[3], double* output)
-{
-  output[0] = matrix[0] * point[0] + matrix[1] * point[1] + matrix[2] * point[2];
-  output[1] = matrix[3] * point[0] + matrix[4] * point[1] + matrix[5] * point[2];
-  output[2] = matrix[6] * point[0] + matrix[7] * point[1] + matrix[8] * point[2];
-}
 
 // ----------------------------------------------------------------------------
 __device__ double norm(double vec[3])
@@ -66,16 +59,22 @@ __device__ int computeVoxelID(int coordinates[3], int type)
   int dimX = c_gridDims.x - 1;
   int dimY = c_gridDims.y - 1;
   if (type == 0)
-  {
+    {
     dimX = c_depthMapDims.x;
     dimY = c_depthMapDims.y;
-  }
+    }
   int i = coordinates[0];
   int j = coordinates[1];
   int k = coordinates[2];
   return (k*dimY + j)*dimX + i;
 }
 
+__device__ void computeVoxelCenter(int voxelCoordinate[3], double output[3])
+{
+  output[0] = c_gridOrig.x + (voxelCoordinate[0] + 0.5) * c_gridSpacing.x;
+  output[1] = c_gridOrig.y + (voxelCoordinate[1] + 0.5) * c_gridSpacing.y;
+  output[2] = c_gridOrig.z + (voxelCoordinate[2] + 0.5) * c_gridSpacing.z;
+}
 
 
 // ----------------------------------------------------------------------------
@@ -90,9 +89,7 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
 
   // Get the center of the voxel
   double voxelCenterTemp[3];
-  voxelCenterTemp[0] = c_gridOrig.x + (voxelCoordinate[0] + 0.5) * c_gridSpacing.x;
-  voxelCenterTemp[1] = c_gridOrig.y + (voxelCoordinate[1] + 0.5) * c_gridSpacing.y;
-  voxelCenterTemp[2] = c_gridOrig.z + (voxelCoordinate[2] + 0.5) * c_gridSpacing.z;
+  computeVoxelCenter(voxelCoordinate, voxelCenterTemp);
 
   // Transform voxel from grid to real coord
   double* voxelCenter = new double[3];
@@ -136,7 +133,6 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
   // Compute the ID on depthmap values according to pixel position and dpeth map dimensions
   int depthMapId = computeVoxelID(pixel, 0);
   int gridId = computeVoxelID(voxelCoordinate, 1);
-  //gridId = (c_gridDims[0] - 1) * (c_gridDims[1] - 1) * (c_gridDims[2] - 1);
   double depth = depths[depthMapId];
   double currentScalarValue = output[gridId];
   double newValue = cumulFunction(realDepth - depth, currentScalarValue);
@@ -144,8 +140,6 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
   // Update the value to the output
   output[gridId] = newValue;
 }
-
-
 
 
 // ----------------------------------------------------------------------------
@@ -232,6 +226,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   CudaErrorCheck(cudaMalloc((void**)&d_outScalar, nbVoxels * sizeof(double)));
   CudaErrorCheck(cudaMemcpy(d_outScalar, h_outScalar, nbVoxels * sizeof(double), cudaMemcpyHostToDevice));
 
+
   int h_dimDepthMap[3];
   h_dataList[0]->GetDepthMap()->GetDimensions(h_dimDepthMap);
   CudaErrorCheck(cudaMemcpyToSymbol(c_depthMapDims, h_dimDepthMap, 2 * sizeof(int)));
@@ -241,11 +236,11 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   dim3 dimGrid(1, h_gridDims[1] - 1, h_gridDims[2] - 1); // nb blocks
 
   // Create device data from host value
-  double* d_depthMap, *d_matrixK, *d_matrixRT;
+  double *d_depthMap, *d_matrixK, *d_matrixRT;
   CudaErrorCheck(cudaMalloc((void**)&d_depthMap, nbPixelOnDepthMap * sizeof(double)));
   CudaErrorCheck(cudaMalloc((void**)&d_matrixK, matrix4Size * sizeof(double)));
   CudaErrorCheck(cudaMalloc((void**)&d_matrixRT, matrix4Size * sizeof(double)));
-
+  
   for (int i = 0; i < h_dataList.size(); i++)
     {
     // Get data and transform its properties to atomic type
@@ -257,18 +252,12 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
     double* h_matrixRT = new double[16];
     vtkMatrixToDoubleTable(currentData->GetMatrixTR(), h_matrixRT);
 
-    printf("id : %d (size : %d)\n", i, currentData->GetDepthMap()->GetNumberOfCells());
-
     CudaErrorCheck(cudaMemcpy(d_depthMap, h_depthMap, nbPixelOnDepthMap * sizeof(double), cudaMemcpyHostToDevice));
     CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, matrix4Size * sizeof(double), cudaMemcpyHostToDevice));
     CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, matrix4Size * sizeof(double), cudaMemcpyHostToDevice));
 
     // run code into device
     depthMapKernel << <dimGrid, dimBlock >> >(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
-
-    cudaError_t err = cudaGetLastError();
-    if (cudaSuccess != err)
-      std::cout << "CUDA ERROR__: " << cudaGetErrorString(err) << std::endl;
 
     // Wait that all threads have finished
     CudaErrorCheck(cudaDeviceSynchronize());
