@@ -10,14 +10,15 @@
 #include "ReconstructionData.h"
 
 // ----------------------------------------------------------------------------
-// Define texture and constants
-__constant__ double c_gridMatrix[16];
-__constant__ double3 c_gridOrig;
-__constant__ int3 c_gridDims;
-__constant__ double3 c_gridSpacing;
-__constant__ int2 c_depthMapDims;
+/* Define texture and constants */
+__constant__ double c_gridMatrix[16]; // Matrix to transpose from basic axis to output volume axis
+__constant__ double3 c_gridOrig; // Origin of the output volume
+__constant__ int3 c_gridDims; // Dimensions of the output volume
+__constant__ double3 c_gridSpacing; // Spacing of the output volume
+__constant__ int2 c_depthMapDims; // Dimensions of all depths map
 
 // ----------------------------------------------------------------------------
+/* Macro called to catch cuda error when cuda functions is called */
 #define CudaErrorCheck(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
 {
@@ -30,6 +31,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 
 
 // ----------------------------------------------------------------------------
+/* Apply a 4x4 matrix to a 3D points */
 __device__ void transformFrom4Matrix(double matrix[16], double point[3], double output[3])
 {
   output[0] = matrix[0] * point[0] + matrix[1] * point[1] + matrix[2] * point[2] + matrix[3];
@@ -39,12 +41,14 @@ __device__ void transformFrom4Matrix(double matrix[16], double point[3], double 
 
 
 // ----------------------------------------------------------------------------
+/* Compute the norm of a table with 3 double */
 __device__ double norm(double vec[3])
 {
   return sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
 }
 
 // ----------------------------------------------------------------------------
+/* Ray potential function which computes the increment to the current voxel */
 __device__ double cumulFunction(double diff, double currentVal)
 {
   double shift = 10 - 0.5 * std::abs(diff);
@@ -53,7 +57,14 @@ __device__ double cumulFunction(double diff, double currentVal)
   return currentVal + shift;
 }
 
+
 // ----------------------------------------------------------------------------
+/* Compute the voxel Id on a 1D table according to its 3D coordinates
+  coordinates : 3D coordinates
+  type : Define if we want the Id from the grid matrix ( = 1) or the depth map ( = 0 )
+         because we don't use  the same dimensions
+  TOBEIMPROVED
+*/
 __device__ int computeVoxelID(int coordinates[3], int type)
 {
   int dimX = c_gridDims.x - 1;
@@ -69,6 +80,9 @@ __device__ int computeVoxelID(int coordinates[3], int type)
   return (k*dimY + j)*dimX + i;
 }
 
+
+// ----------------------------------------------------------------------------
+/* Compute the middle of a voxel according to constant global value and the origin of the voxel */
 __device__ void computeVoxelCenter(int voxelCoordinate[3], double output[3])
 {
   output[0] = c_gridOrig.x + (voxelCoordinate[0] + 0.5) * c_gridSpacing.x;
@@ -78,6 +92,12 @@ __device__ void computeVoxelCenter(int voxelCoordinate[3], double output[3])
 
 
 // ----------------------------------------------------------------------------
+/* Main function called inside the kernel
+  depths : depth map values
+  matrixK : matrixK
+  matrixTR : matrixTR
+  output : double table that will be filled at the end of function
+*/
 __global__ void depthMapKernel(double* depths, double matrixK[16], double matrixTR[16],
   double* output)
 {
@@ -125,7 +145,7 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
       return;
     }
 
-  // Compute the ID on depthmap values according to pixel position and dpeth map dimensions
+  // Compute the ID on depthmap values according to pixel position and depth map dimensions
   int depthMapId = computeVoxelID(pixel, 0);
   int gridId = computeVoxelID(voxelCoordinate, 1);
   double depth = depths[depthMapId];
@@ -138,6 +158,7 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
 
 
 // ----------------------------------------------------------------------------
+/* Extract data from a 4x4 vtkMatrix and fill a double table with 16 space */
 __host__ void vtkMatrixToDoubleTable(vtkMatrix4x4* matrix, double* output)
 {
   output[0] = matrix->GetElement(0, 0);
@@ -160,16 +181,18 @@ __host__ void vtkMatrixToDoubleTable(vtkMatrix4x4* matrix, double* output)
 
 
 // ----------------------------------------------------------------------------
+/* Extract double value from vtkDoubleArray and fill a double table (output) */
 __host__ void vtkDoubleArrayToTable(vtkDoubleArray* doubleArray, double* output)
 {
   for (int i = 0; i < doubleArray->GetNumberOfTuples(); i++)
   {
-    output[i] = doubleArray->GetTuple1(i);
+  output[i] = doubleArray->GetTuple1(i);
   }
 }
 
 
 // ----------------------------------------------------------------------------
+/* Extract point data array (name 'Depths') from vtkImageData and fill a double table */
 __host__ void vtkImageDataToTable(vtkImageData* image, double* output)
 {
   vtkDoubleArray* depths = vtkDoubleArray::SafeDownCast(image->GetPointData()->GetArray("Depths"));
@@ -178,6 +201,7 @@ __host__ void vtkImageDataToTable(vtkImageData* image, double* output)
 
 
 // ----------------------------------------------------------------------------
+/* Fill a vtkDoubleArray from a double table */
 __host__ void doubleTableToVtkDoubleArray(double* table, vtkDoubleArray* output)
 {
   int nbVoxels = output->GetNumberOfTuples();
@@ -195,7 +219,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
                    int h_gridDims[3], // Dimensions of the output volume
                    double h_gridOrig[3], // Origin of the output volume
                    double h_gridSpacing[3], // Spacing of the output volume
-                   vtkDoubleArray* io_outScalar)
+                   vtkDoubleArray* io_outScalar) // It will be filled inside function
 {
   if (h_dataList.size() == 0)
     return -1;
