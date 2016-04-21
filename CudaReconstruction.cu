@@ -94,10 +94,10 @@ __device__ void rayPotential(double realDistance, double depthMapDistance, doubl
 {
   double diff = realDistance - depthMapDistance;
 
-  res = (c_rayPotentialThick / c_rayPotentialRho) * diff;
+  res = (c_rayPotentialRho / c_rayPotentialThick)* diff;
   if (res > c_rayPotentialRho)
     res = c_rayPotentialRho;
-  if (res < -c_rayPotentialRho)
+  else if (res < -c_rayPotentialRho)
     res = -c_rayPotentialRho;
 }
 

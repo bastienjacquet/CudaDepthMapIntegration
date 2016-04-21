@@ -270,10 +270,10 @@ void vtkCudaReconstructionFilter::RayPotential(double realDistance,
 {
   double diff = realDistance - depthMapDistance;
 
-  shift = (this->RayPotentialThickness / this->RayPotentialRho) * diff;
+  shift = (this->RayPotentialRho / this->RayPotentialThickness) * diff;
   if (shift > this->RayPotentialRho)
     shift = this->RayPotentialRho;
-  if (shift < -this->RayPotentialRho)
+  else if (shift < -this->RayPotentialRho)
     shift = -this->RayPotentialRho;
 }
 
