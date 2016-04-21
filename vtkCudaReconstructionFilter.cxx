@@ -79,10 +79,9 @@ int vtkCudaReconstructionFilter::RequestData(
   vtkImageData *outGrid = vtkImageData::SafeDownCast(
     outGridInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  if (this->DataList.size() == 0)
+  if (this->DataList.size() == 0 || this->GridMatrix == 0)
     {
-    // todo error message
-    std::cerr << "Error, input not set." << std::endl;
+    std::cerr << "Error, some inputs have not been set." << std::endl;
     return 0;
     }
 
@@ -93,9 +92,6 @@ int vtkCudaReconstructionFilter::RequestData(
   inGrid->GetDimensions(gridDims);
   double gridSpacing[3];
   inGrid->GetSpacing(gridSpacing);
-
-  // todo remove
-  std::cout << "Initialize output." << std::endl;
 
 
   // initialize output
@@ -121,7 +117,7 @@ int vtkCudaReconstructionFilter::RequestData(
       }
     clock_t end = clock();
     double diff = (double)(end - start) / CLOCKS_PER_SEC;
-    std::cout << "WITHOUT CUDA : " << diff << " s" << std::endl;
+    std::cout << "Time WITHOUT CUDA : " << diff << " s" << std::endl;
     }
   else
     {
@@ -137,7 +133,7 @@ int vtkCudaReconstructionFilter::RequestData(
                    this->RayPotentialThickness, this->RayPotentialRho, outScalar.Get());
     clock_t end = clock();
     double diff = (double)(end - start) / CLOCKS_PER_SEC;
-    std::cout << "WITH CUDA : " << diff << " s" << std::endl;
+    std::cout << "Time WITH CUDA : " << diff << " s" << std::endl;
     }
 
   return 1;
@@ -160,9 +156,6 @@ int vtkCudaReconstructionFilter::ComputeWithoutCuda(
     return 0;
     }
 
-  // todo remove
-  std::cout << "Create matrices." << std::endl;
-
   // create transforms from matrices
   vtkNew<vtkTransform> transformGridToRealCoords;
   transformGridToRealCoords->SetMatrix(gridMatrix);
@@ -180,9 +173,6 @@ int vtkCudaReconstructionFilter::ComputeWithoutCuda(
     }
   vtkNew<vtkTransform> transformCameraToDepthMap;
   transformCameraToDepthMap->SetMatrix(depthMapMatrixK4x4.Get());
-
-  // todo remove
-  std::cout << "Fill output." << std::endl;
 
   for (vtkIdType i_vox = 0; i_vox < voxelsNb; i_vox++)
     {
@@ -231,7 +221,7 @@ int vtkCudaReconstructionFilter::ComputeWithoutCuda(
     if (0 > id && id >= depthMap->GetNumberOfPoints())
       {
       // todo error message
-      std::cout << "Bad conversion from ijk to id." << std::endl;
+      std::cerr << "Bad conversion from ijk to id." << std::endl;
       continue;
       }
     double depth = depths->GetValue(id);

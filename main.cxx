@@ -38,7 +38,7 @@ bool useCuda = true; // Determine if the algorithm reconstruction is launched on
 // filled attributes
 std::vector<std::string> g_depthMapPathList; // Contains all depth map path
 std::vector<std::string> g_KRTPathList; // Contains all KRT matrix path
-std::vector<ReconstructionData*> g_dataList;
+std::vector<ReconstructionData*> g_dataList; // Contains all read depth map and matrix
 vtkMatrix4x4* g_gridMatrix;
 
 bool read_arguments(int argc, char ** argv);
@@ -72,9 +72,6 @@ int main(int argc, char ** argv)
   grid->SetOrigin(&g_gridOrigin[0]);
 
 
-  // todo remove
-  std::cout << "Reconstruction filter." << std::endl;
-
   // reconstruction
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
   if (useCuda)
@@ -88,9 +85,6 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
   cudaReconstructionFilter->Update();
 
-  // todo remove
-  std::cout << "Transform filter." << std::endl;
-
   // todo compute transform according to gridVecs
   vtkNew<vtkTransform> transform;
   transform->SetMatrix(g_gridMatrix);
@@ -100,8 +94,6 @@ int main(int argc, char ** argv)
   transformFilter->Update();
   vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
 
-  // todo remove
-  std::cout << "Write output." << std::endl;
 
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
   gridWriter->SetFileName(g_outputGridFilename.c_str());
@@ -196,8 +188,8 @@ bool read_arguments(int argc, char ** argv)
   arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Input grid direction Z (required)");
   arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (required)");
   arg.AddArgument("--dataFolder", argT::SPACE_ARGUMENT, &g_pathFolder, "Folder which contains all data (required)");
-  arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default is vtiList.txt)");
-  arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default is kList.txt)");
+  arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default vtiList.txt)");
+  arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default kList.txt)");
   arg.AddArgument("--rayThick", argT::SPACE_ARGUMENT, &rayPotentialThick, "Define the ray potential thickness threshold when cuda is using (default 2)");
   arg.AddArgument("--rayRho", argT::SPACE_ARGUMENT, &rayPotentialRho, "Define the ray potential rho when cuda is using (default 3)");
   arg.AddArgument("--useCuda", argT::SPACE_ARGUMENT, &useCuda, "Determine if cuda is used (default true)");
@@ -212,8 +204,7 @@ bool read_arguments(int argc, char ** argv)
 
   if (g_outputGridFilename == "" || g_depthMapContainer == "" || g_KRTContainer == "")
     {
-    // todo error message
-    std::cerr << "Problem parsing arguments." << std::endl;
+    std::cerr << "Error arguments." << std::endl;
     std::cerr << arg.GetHelp() ;
     return false;
     }

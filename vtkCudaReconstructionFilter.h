@@ -35,7 +35,11 @@ public:
   // Define if algorithm is launched on the GPU with cuda (or not)
   vtkSetMacro(UseCuda, bool);
 
+  // Description :
+  // The algorithm will be launched with cuda on GPU (fast)
   void UseCudaOn();
+  // Description :
+  // The algorithm will be launched withou cuda on CPU (slow)
   void UseCudaOff();
 
   // Description:
@@ -43,8 +47,10 @@ public:
   void SetDepthMap(vtkImageData *depthMap);
 
   // Description:
-  // Specify the depth map transform matrix: K, R, T.
+  // Specify the depth map transform matrix: K.
   void SetDepthMapMatrixK(vtkMatrix3x3 *depthMapMatrixK);
+  // Description:
+  // Specify the depth map transform matrix: R, T.
   void SetDepthMapMatrixTR(vtkMatrix4x4 *depthMapMatrixTR);
   // Description
   // Define the matrix transform to orientate the output volume

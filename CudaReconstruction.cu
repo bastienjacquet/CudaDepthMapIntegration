@@ -255,10 +255,10 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
 
 
   // Create and fill device value
-  cudaMemcpyToSymbol(c_gridMatrix, h_gridMatrix, 16 * sizeof(double));
-  cudaMemcpyToSymbol(c_gridDims, h_gridDims, 3 * sizeof(int));
-  cudaMemcpyToSymbol(c_gridOrig, h_gridOrig, 3 * sizeof(double));
-  cudaMemcpyToSymbol(c_gridSpacing, h_gridSpacing, 3 * sizeof(double));
+  cudaMemcpyToSymbol(c_gridMatrix, h_gridMatrix, matrix4Size * sizeof(double));
+  cudaMemcpyToSymbol(c_gridDims, h_gridDims, point3Size * sizeof(int));
+  cudaMemcpyToSymbol(c_gridOrig, h_gridOrig, point3Size * sizeof(double));
+  cudaMemcpyToSymbol(c_gridSpacing, h_gridSpacing, point3Size * sizeof(double));
   cudaMemcpyToSymbol(c_rayPotentialThick, &h_rayPThick, sizeof(double));
   cudaMemcpyToSymbol(c_rayPotentialRho, &h_rayPRho, sizeof(double));
   double* d_outScalar;
@@ -271,8 +271,8 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   CudaErrorCheck(cudaMemcpyToSymbol(c_depthMapDims, h_dimDepthMap, 2 * sizeof(int)));
 
   // Organize threads into blocks and grids
-  dim3 dimBlock(h_gridDims[0] - 1, 1, 1); // nb threads
-  dim3 dimGrid(1, h_gridDims[1] - 1, h_gridDims[2] - 1); // nb blocks
+  dim3 dimBlock(h_gridDims[0] - 1, 1, 1); // nb threads on each block
+  dim3 dimGrid(1, h_gridDims[1] - 1, h_gridDims[2] - 1); // nb blocks on a grid
 
   // Create device data from host value
   double *d_depthMap, *d_matrixK, *d_matrixRT;
@@ -301,7 +301,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
     // Wait that all threads have finished
     CudaErrorCheck(cudaDeviceSynchronize());
 
-    // clean code
+    // clean memory
     delete(h_depthMap);
     delete(h_matrixK);
     delete(h_matrixRT);
