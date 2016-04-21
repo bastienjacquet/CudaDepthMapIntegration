@@ -62,6 +62,9 @@ public:
   // Description :
   // Define if algorithm is launched on the GPU with cuda (or not)
   vtkSetMacro(UseCuda, bool);
+  //Description :
+  // Get the execution time when update is launch (in seconds)
+  vtkGetMacro(ExecutionTime, double);
 
   // Description :
   // The algorithm will be launched with cuda on GPU (fast)
@@ -112,6 +115,7 @@ protected:
   double RayPotentialRho;
   double RayPotentialThickness;
   bool UseCuda;
+  double ExecutionTime;
 
 private:
   vtkCudaReconstructionFilter(const vtkCudaReconstructionFilter&);  // Not implemented.

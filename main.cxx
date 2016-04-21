@@ -116,7 +116,7 @@ int main(int argc, char ** argv)
   grid->SetOrigin(&g_gridOrigin[0]);
 
   
-  ShowInformation("Launch reconstruction...");
+  ShowInformation("** Launch reconstruction...");
 
   // Launch reconstruction process
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
@@ -131,7 +131,11 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
   cudaReconstructionFilter->Update();
 
-  ShowInformation("Apply grid matrix to the reconstruction output...");
+  double time = cudaReconstructionFilter->GetExecutionTime();
+  std::string message = "Execution time : " + std::to_string(time) + " s";
+  ShowInformation(message);
+
+  ShowInformation("** Apply grid matrix to the reconstruction output...");
 
   vtkNew<vtkTransform> transform;
   transform->SetMatrix(g_gridMatrix);
@@ -141,7 +145,7 @@ int main(int argc, char ** argv)
   transformFilter->Update();
   vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
 
-  ShowInformation("Save output...");
+  ShowInformation("** Save output...");
 
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
   gridWriter->SetFileName(g_outputGridFilename.c_str());

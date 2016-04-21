@@ -97,6 +97,9 @@ int vtkCudaReconstructionFilter::RequestData(
   vtkInformationVector **inputVector,
   vtkInformationVector *outputVector)
 {
+  this->ExecutionTime = -1;
+  clock_t start = clock();
+
   // get the info objects
   vtkInformation *inGridInfo = inputVector[0]->GetInformationObject(0);
   vtkInformation *outGridInfo = outputVector->GetInformationObject(0);
@@ -121,7 +124,6 @@ int vtkCudaReconstructionFilter::RequestData(
   double gridSpacing[3];
   inGrid->GetSpacing(gridSpacing);
 
-
   // initialize output
   vtkNew<vtkDoubleArray> outScalar;
   outScalar->SetName("reconstruction_scalar");
@@ -134,7 +136,6 @@ int vtkCudaReconstructionFilter::RequestData(
   // computation
   if (!this->UseCuda)
     {
-    clock_t start = clock();
     for (int i = 0; i < this->DataList.size(); i++)
       {
       ReconstructionData* currentData = this->DataList[i];
@@ -143,9 +144,6 @@ int vtkCudaReconstructionFilter::RequestData(
         currentData->GetDepthMap(), currentData->Get3MatrixK(), currentData->GetMatrixTR(),
         outScalar.Get());
       }
-    clock_t end = clock();
-    double diff = (double)(end - start) / CLOCKS_PER_SEC;
-    std::cout << "Time WITHOUT CUDA : " << diff << " s" << std::endl;
     }
   else
     {
@@ -156,13 +154,12 @@ int vtkCudaReconstructionFilter::RequestData(
       return 0;
       }
 
-    clock_t start = clock();
     reconstruction(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing,
                    this->RayPotentialThickness, this->RayPotentialRho, outScalar.Get());
-    clock_t end = clock();
-    double diff = (double)(end - start) / CLOCKS_PER_SEC;
-    std::cout << "Time WITH CUDA : " << diff << " s" << std::endl;
     }
+
+  clock_t end = clock();
+  this->ExecutionTime = (double)(end - start) / CLOCKS_PER_SEC;
 
   return 1;
 }
