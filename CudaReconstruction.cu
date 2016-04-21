@@ -16,6 +16,8 @@ __constant__ double3 c_gridOrig; // Origin of the output volume
 __constant__ int3 c_gridDims; // Dimensions of the output volume
 __constant__ double3 c_gridSpacing; // Spacing of the output volume
 __constant__ int2 c_depthMapDims; // Dimensions of all depths map
+__constant__ double c_rayPotentialThick; // Thickness threshold for the ray potential function
+__constant__ double c_rayPotentialRho; // Rho at the Y axis for the ray potential function
 
 // ----------------------------------------------------------------------------
 /* Macro called to catch cuda error when cuda functions is called */
@@ -55,6 +57,19 @@ __device__ double cumulFunction(double diff, double currentVal)
   if (shift < 0)
     shift = 0;
   return currentVal + shift;
+}
+
+// ----------------------------------------------------------------------------
+/* Ray potential function which computes the increment to the current voxel */
+__device__ void rayPotential(double realDistance, double depthMapDistance, double& res)
+{
+  double diff = realDistance - depthMapDistance;
+
+  res = (c_rayPotentialThick / c_rayPotentialRho) * diff;
+  if (res > c_rayPotentialRho)
+    res = c_rayPotentialRho;
+  if (res < -c_rayPotentialRho)
+    res = -c_rayPotentialRho;
 }
 
 
@@ -219,6 +234,8 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
                    int h_gridDims[3], // Dimensions of the output volume
                    double h_gridOrig[3], // Origin of the output volume
                    double h_gridSpacing[3], // Spacing of the output volume
+                   double h_rayPThick,
+                   double h_rayPRho,
                    vtkDoubleArray* io_outScalar) // It will be filled inside function
 {
   if (h_dataList.size() == 0)
@@ -226,6 +243,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
 
   // Get usefull value for allocation of variables
   const int matrix4Size = 16;
+  const int point3Size = 3;
   const int nbPixelOnDepthMap = h_dataList[0]->GetDepthMap()->GetNumberOfPoints();
   const int nbVoxels = io_outScalar->GetNumberOfTuples();
 
@@ -241,6 +259,8 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   cudaMemcpyToSymbol(c_gridDims, h_gridDims, 3 * sizeof(int));
   cudaMemcpyToSymbol(c_gridOrig, h_gridOrig, 3 * sizeof(double));
   cudaMemcpyToSymbol(c_gridSpacing, h_gridSpacing, 3 * sizeof(double));
+  cudaMemcpyToSymbol(c_rayPotentialThick, &h_rayPThick, sizeof(double));
+  cudaMemcpyToSymbol(c_rayPotentialRho, &h_rayPRho, sizeof(double));
   double* d_outScalar;
   CudaErrorCheck(cudaMalloc((void**)&d_outScalar, nbVoxels * sizeof(double)));
   CudaErrorCheck(cudaMemcpy(d_outScalar, h_outScalar, nbVoxels * sizeof(double), cudaMemcpyHostToDevice));

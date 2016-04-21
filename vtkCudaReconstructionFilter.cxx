@@ -26,14 +26,17 @@ vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatr
 
 // Define the function signature in .cu file in order to be recognize inside the file
 int reconstruction(std::vector<ReconstructionData*> i_dataList, vtkMatrix4x4* i_gridMatrix, 
-  int h_gridDims[3], double h_gridOrig[3], double h_gridSpacing[3], vtkDoubleArray* h_outScalar);
+  int h_gridDims[3], double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick,
+  double h_rayPRho, vtkDoubleArray* h_outScalar);
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 {
   this->SetNumberOfInputPorts(1);
   this->GridMatrix = 0;
-  this->useCuda = false;
+  this->UseCuda = false;
+  this->RayPotentialRho = 0;
+  this->RayPotentialThickness = 0;
 }
 
 //----------------------------------------------------------------------------
@@ -51,13 +54,13 @@ void vtkCudaReconstructionFilter::SetDataList(std::vector<ReconstructionData*> l
 //----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::UseCudaOn()
 {
-  this->useCuda = true;
+  this->SetUseCuda(true);
 }
 
 //----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::UseCudaOff()
 {
-  this->useCuda = false;
+  this->SetUseCuda(false);
 }
 
 //----------------------------------------------------------------------------
@@ -105,7 +108,7 @@ int vtkCudaReconstructionFilter::RequestData(
   outGrid->GetCellData()->AddArray(outScalar.Get());
 
   // computation
-  if (!this->useCuda)
+  if (!this->UseCuda)
     {
     clock_t start = clock();
     for (int i = 0; i < this->DataList.size(); i++)
@@ -122,8 +125,16 @@ int vtkCudaReconstructionFilter::RequestData(
     }
   else
     {
+    // Check if all variables used in cuda are set
+    if (this->RayPotentialRho == 0 && this->RayPotentialThickness == 0)
+      {
+      std::cerr << "Error : Ray potential Rho or Thickness or both have not been set" << std::endl;
+      return 0;
+      }
+
     clock_t start = clock();
-    reconstruction(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing, outScalar.Get());
+    reconstruction(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing,
+                   this->RayPotentialThickness, this->RayPotentialRho, outScalar.Get());
     clock_t end = clock();
     double diff = (double)(end - start) / CLOCKS_PER_SEC;
     std::cout << "WITH CUDA : " << diff << " s" << std::endl;
@@ -227,21 +238,27 @@ int vtkCudaReconstructionFilter::ComputeWithoutCuda(
 
     // compute new val
     // todo replace by class function
-    double val = outScalar->GetValue(i_vox);
-    vtkCudaReconstructionFilter::FunctionCumul(distanceVoxCam - depth, val);
-    outScalar->SetValue(i_vox, val);
+    double currentVal = outScalar->GetValue(i_vox);
+    double shift;
+    this->RayPotential(distanceVoxCam, depth, shift);
+    outScalar->SetValue(i_vox, currentVal + shift);
     }
 
   return 1;
 }
 
 //----------------------------------------------------------------------------
-void vtkCudaReconstructionFilter::FunctionCumul(double diff, double& val)
+void vtkCudaReconstructionFilter::RayPotential(double realDistance,
+                                                double depthMapDistance,
+                                                double& shift)
 {
-  double shift = 10 - 0.5 * std::abs(diff);
-  if (shift < 0)
-    shift = 0;
-  val += shift;
+  double diff = realDistance - depthMapDistance;
+
+  shift = (this->RayPotentialThickness / this->RayPotentialRho) * diff;
+  if (shift > this->RayPotentialRho)
+    shift = this->RayPotentialRho;
+  if (shift < -this->RayPotentialRho)
+    shift = -this->RayPotentialRho;
 }
 
 

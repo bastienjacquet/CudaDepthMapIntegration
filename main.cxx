@@ -31,6 +31,9 @@ std::string g_outputGridFilename;
 std::string g_pathFolder; // Path to the folder which contains all data
 std::string g_depthMapContainer = "vtiList.txt"; // File which contains all path of depth map
 std::string g_KRTContainer = "kList.txt"; // File which contains all path of KRT matrix ofr each depth map
+double rayPotentialThick = 2; // Define parameter 'thick' on ray potential function when cuda is using
+double rayPotentialRho = 3; // Define parameter 'rho' on ray potential function when cuda is using
+bool useCuda = true; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 
 // filled attributes
 std::vector<std::string> g_depthMapPathList; // Contains all depth map path
@@ -74,7 +77,12 @@ int main(int argc, char ** argv)
 
   // reconstruction
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
-  cudaReconstructionFilter->UseCudaOff();
+  if (useCuda)
+    cudaReconstructionFilter->UseCudaOn();
+  else
+    cudaReconstructionFilter->UseCudaOff();
+  cudaReconstructionFilter->SetRayPotentialRho(rayPotentialRho);
+  cudaReconstructionFilter->SetRayPotentialThickness(rayPotentialThick);
   cudaReconstructionFilter->SetInputData(grid.Get());
   cudaReconstructionFilter->SetDataList(g_dataList);
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
@@ -190,6 +198,9 @@ bool read_arguments(int argc, char ** argv)
   arg.AddArgument("--dataFolder", argT::SPACE_ARGUMENT, &g_pathFolder, "Folder which contains all data (required)");
   arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default is vtiList.txt)");
   arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default is kList.txt)");
+  arg.AddArgument("--rayThick", argT::SPACE_ARGUMENT, &rayPotentialThick, "Define the ray potential thickness threshold when cuda is using (default 2)");
+  arg.AddArgument("--rayRho", argT::SPACE_ARGUMENT, &rayPotentialRho, "Define the ray potential rho when cuda is using (default 3)");
+  arg.AddArgument("--useCuda", argT::SPACE_ARGUMENT, &useCuda, "Determine if cuda is used (default true)");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
 
   int result = arg.Parse();

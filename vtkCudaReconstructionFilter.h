@@ -25,6 +25,16 @@ public:
   vtkTypeMacro(vtkCudaReconstructionFilter,vtkImageAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
+  // Description:
+  // Define the thickness threshold (X axis) of the ray potential function when using cuda
+  vtkSetMacro(RayPotentialThickness, double);
+  // Description:
+  // Define the rho value (Y axis) of the ray potential function when using cuda
+  vtkSetMacro(RayPotentialRho, double);
+  // Description :
+  // Define if algorithm is launched on the GPU with cuda (or not)
+  vtkSetMacro(UseCuda, bool);
+
   void UseCudaOn();
   void UseCudaOff();
 
@@ -56,16 +66,18 @@ protected:
   virtual int RequestUpdateExtent(vtkInformation *, vtkInformationVector **,
     vtkInformationVector *);
 
-  static int ComputeWithoutCuda(
+  int ComputeWithoutCuda(
     vtkMatrix4x4 *gridMatrix, double gridOrig[3], int gridDims[3], double gridSpacing[3],
     vtkImageData* depthMap, vtkMatrix3x3 *depthMapMatrixK, vtkMatrix4x4 *depthMapMatrixTR,
     vtkDoubleArray* outScalar);
 
-  static void FunctionCumul(double diff, double& val);
+  void RayPotential(double realDistance, double depthMapDistance, double& val);
 
   std::vector<ReconstructionData*> DataList;
   vtkMatrix4x4 *GridMatrix;
-  bool useCuda;
+  double RayPotentialRho;
+  double RayPotentialThickness;
+  bool UseCuda;
 
 private:
   vtkCudaReconstructionFilter(const vtkCudaReconstructionFilter&);  // Not implemented.
