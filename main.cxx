@@ -86,6 +86,7 @@ bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* mat
 void CreateGridMatrixFromInput();
 std::vector<std::string> &SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
 void ShowInformation(std::string message);
+void ShowFilledParameters();
 
 
 //cudareconstruction.exe --gridDims 100 100 100 --gridSpacing 0.1 0.1 0.1 --gridOrigin -5 -5 -5 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C:\Dev\nda\TRG\Data --outputGridFilename C:\Dev\nda\TRG\Data\output.vts
@@ -99,6 +100,8 @@ int main(int argc, char ** argv)
     }
 
   ShowInformation("---START---");
+
+  ShowFilledParameters();
 
   // Read and create a list of ReconstructionData
   if (!CreateReconstructionData())
@@ -429,4 +432,33 @@ void ShowInformation(std::string information)
     {
     std::cout << information << "\n" << std::endl;
     }
+}
+
+void ShowFilledParameters()
+{
+  if (!verbose)
+    return;
+
+  std::cout << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "** OUTPUT GRID :" << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "--- Dimensions : ( " << g_gridDims[0] << ", " << g_gridDims[1] << ", " << g_gridDims[2] << " )" << std::endl;
+  std::cout << "--- Spacing    : ( " << g_gridSpacing[0] << ", " << g_gridSpacing[1] << ", " << g_gridSpacing[2] << " )" << std::endl;
+  std::cout << "--- Origin     : ( " << g_gridOrigin[0] << ", " << g_gridOrigin[1] << ", " << g_gridOrigin[2] << " )" << std::endl;
+  std::cout << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
+  std::cout << "--- Matrix :" << std::endl;
+    std::string l1 = "  " + std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
+    std::string l2 = "  " + std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
+    std::string l3 = "  " + std::to_string(g_gridVecX[2]) + "  " + std::to_string(g_gridVecY[2]) + "  " + std::to_string(g_gridVecZ[2]) + "\n";
+  std::cout << l1 << std::endl;
+  std::cout << l2 << std::endl;
+  std::cout << l3 << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "** CUDA :" << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "--- Thickness ray potential : " << rayPotentialThick << std::endl;
+  std::cout << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
+  std::cout << "--- Use cuda :                " << !noCuda << std::endl;
+  std::cout << std::endl;
 }
