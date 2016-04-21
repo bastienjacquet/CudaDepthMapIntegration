@@ -64,7 +64,8 @@ std::string g_depthMapContainer = "vtiList.txt"; // File which contains all path
 std::string g_KRTContainer = "kList.txt"; // File which contains all path of KRT matrix ofr each depth map
 double rayPotentialThick = 2; // Define parameter 'thick' on ray potential function when cuda is using
 double rayPotentialRho = 3; // Define parameter 'rho' on ray potential function when cuda is using
-bool useCuda = true; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
+bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
+bool verbose = false; // Display debug information during execution
 
 //-----------------------------------------------------------------------------
 // FILLED ATTRIBUTES
@@ -83,6 +84,7 @@ bool CreateReconstructionData();
 bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
 void CreateGridMatrixFromInput();
 std::vector<std::string> &SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
+void ShowInformation(std::string message);
 
 
 //cudareconstruction.exe --gridDims 100 100 100 --gridSpacing 0.1 0.1 0.1 --gridOrigin -5 -5 -5 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C:\Dev\nda\TRG\Data --outputGridFilename C:\Dev\nda\TRG\Data\output.vts
@@ -94,6 +96,8 @@ int main(int argc, char ** argv)
     {
     return EXIT_FAILURE;
     }
+
+  ShowInformation("---START---");
 
   // Read and create a list of ReconstructionData
   if (!CreateReconstructionData())
@@ -111,16 +115,23 @@ int main(int argc, char ** argv)
   grid->SetSpacing(&g_gridSpacing[0]);
   grid->SetOrigin(&g_gridOrigin[0]);
 
+  
+  ShowInformation("Launch reconstruction...");
 
   // Launch reconstruction process
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
+  if (noCuda)
     cudaReconstructionFilter->UseCudaOff();
+  else
+    cudaReconstructionFilter->UseCudaOn();
   cudaReconstructionFilter->SetRayPotentialRho(rayPotentialRho);
   cudaReconstructionFilter->SetRayPotentialThickness(rayPotentialThick);
   cudaReconstructionFilter->SetInputData(grid.Get());
   cudaReconstructionFilter->SetDataList(g_dataList);
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
   cudaReconstructionFilter->Update();
+
+  ShowInformation("Apply grid matrix to the reconstruction output...");
 
   vtkNew<vtkTransform> transform;
   transform->SetMatrix(g_gridMatrix);
@@ -130,6 +141,7 @@ int main(int argc, char ** argv)
   transformFilter->Update();
   vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
 
+  ShowInformation("Save output...");
 
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
   gridWriter->SetFileName(g_outputGridFilename.c_str());
@@ -140,6 +152,7 @@ int main(int argc, char ** argv)
   g_gridMatrix->Delete();
   g_dataList.clear();
 
+  ShowInformation("---END---");
 
   return EXIT_SUCCESS;
 }
@@ -166,7 +179,8 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default kList.txt)");
   arg.AddArgument("--rayThick", argT::SPACE_ARGUMENT, &rayPotentialThick, "Define the ray potential thickness threshold when cuda is using (default 2)");
   arg.AddArgument("--rayRho", argT::SPACE_ARGUMENT, &rayPotentialRho, "Define the ray potential rho when cuda is using (default 3)");
-  arg.AddArgument("--useCuda", argT::SPACE_ARGUMENT, &useCuda, "Determine if cuda is used (default true)");
+  arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
+  arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
 
   int result = arg.Parse();
@@ -215,6 +229,7 @@ required to launch the process
 */
 bool CreateReconstructionData()
 {
+  ShowInformation("Read depth map and matrix files...");
 
   std::string dmapGlobalFile = g_pathFolder + "\\" + g_depthMapContainer;
   std::string krtGlobalFile = g_pathFolder + "\\" + g_KRTContainer;
@@ -286,6 +301,10 @@ bool CreateReconstructionData()
   // If there is no enough data, don't launch process
   if (g_dataList.size() == 0)
     return false;
+
+  std::string info = std::to_string(g_dataList.size()) + " depth map have been loaded.";
+  ShowInformation(info);
+
   return true;
 }
 
@@ -374,6 +393,13 @@ void CreateGridMatrixFromInput()
   gridMatrix->SetElement(2, 2, g_gridVecZ[2]);
 
   g_gridMatrix = gridMatrix;
+
+  // Debug information
+  std::string l1 = std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
+  std::string l2 = std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
+  std::string l3 = std::to_string(g_gridVecX[2]) + "  " + std::to_string(g_gridVecY[2]) + "  " + std::to_string(g_gridVecZ[2]) + "\n";
+  std::string info = "Reconstruct grid matrix : \n" + l1 + l2 + l3;
+  ShowInformation(info);
 }
 
 //-----------------------------------------------------------------------------
@@ -388,4 +414,14 @@ std::vector<std::string> &SplitString(const std::string &s, char delim,
     elems.push_back(item);
     }
   return elems;
+}
+
+//-----------------------------------------------------------------------------
+/* Show information on console if we are on verbose mode */
+void ShowInformation(std::string information)
+{
+  if (verbose)
+    {
+    std::cout << information << "\n" << std::endl;
+    }
 }
