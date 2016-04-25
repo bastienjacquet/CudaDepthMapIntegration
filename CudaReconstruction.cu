@@ -38,12 +38,15 @@
 #include <math.h>
 #include "ReconstructionData.h"
 
+#define Mat4x4 16
+#define Point3D 3
+#define Dim3D 3
 // ----------------------------------------------------------------------------
 /* Define texture and constants */
-__constant__ double c_gridMatrix[16]; // Matrix to transpose from basic axis to output volume axis
-__constant__ double3 c_gridOrig; // Origin of the output volume
+__constant__ double c_gridMatrix[Mat4x4]; // Matrix to transpose from basic axis to output volume axis
+__constant__ double c_gridOrig[Point3D]; // Origin of the output volume
 __constant__ int3 c_gridDims; // Dimensions of the output volume
-__constant__ double3 c_gridSpacing; // Spacing of the output volume
+__constant__ TCompute c_gridSpacing[Dim3D]; // Spacing of the output volume
 __constant__ int2 c_depthMapDims; // Dimensions of all depths map
 __constant__ double c_rayPotentialThick; // Thickness threshold for the ray potential function
 __constant__ double c_rayPotentialRho; // Rho at the Y axis for the ray potential function
@@ -63,7 +66,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 
 // ----------------------------------------------------------------------------
 /* Apply a 4x4 matrix to a 3D points */
-__device__ void transformFrom4Matrix(double matrix[16], double point[3], double output[3])
+__device__ void transformFrom4Matrix(double matrix[Mat4x4], double point[Point3D], double output[Point3D])
 {
   output[0] = matrix[0] * point[0] + matrix[1] * point[1] + matrix[2] * point[2] + matrix[3];
   output[1] = matrix[4] * point[0] + matrix[5] * point[1] + matrix[6] * point[2] + matrix[7];
@@ -73,7 +76,7 @@ __device__ void transformFrom4Matrix(double matrix[16], double point[3], double 
 
 // ----------------------------------------------------------------------------
 /* Compute the norm of a table with 3 double */
-__device__ double norm(double vec[3])
+__device__ double norm(double vec[Dim3D])
 {
   return sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
 }
@@ -109,7 +112,7 @@ __device__ void rayPotential(double realDistance, double depthMapDistance, doubl
          because we don't use  the same dimensions
   TOBEIMPROVED
 */
-__device__ int computeVoxelID(int coordinates[3], int type)
+__device__ int computeVoxelID(int coordinates[Point3D], int type)
 {
   int dimX = c_gridDims.x - 1;
   int dimY = c_gridDims.y - 1;
@@ -127,11 +130,11 @@ __device__ int computeVoxelID(int coordinates[3], int type)
 
 // ----------------------------------------------------------------------------
 /* Compute the middle of a voxel according to constant global value and the origin of the voxel */
-__device__ void computeVoxelCenter(int voxelCoordinate[3], double output[3])
+__device__ void computeVoxelCenter(int voxelCoordinate[Point3D], double output[Point3D])
 {
-  output[0] = c_gridOrig.x + (voxelCoordinate[0] + 0.5) * c_gridSpacing.x;
-  output[1] = c_gridOrig.y + (voxelCoordinate[1] + 0.5) * c_gridSpacing.y;
-  output[2] = c_gridOrig.z + (voxelCoordinate[2] + 0.5) * c_gridSpacing.z;
+  output[0] = c_gridOrig[0] + (voxelCoordinate[0] + 0.5) * c_gridSpacing[0];
+  output[1] = c_gridOrig[1] + (voxelCoordinate[1] + 0.5) * c_gridSpacing[1];
+  output[2] = c_gridOrig[2] +(voxelCoordinate[2] + 0.5) * c_gridSpacing[2];
 }
 
 
@@ -142,29 +145,29 @@ __device__ void computeVoxelCenter(int voxelCoordinate[3], double output[3])
   matrixTR : matrixTR
   output : double table that will be filled at the end of function
 */
-__global__ void depthMapKernel(double* depths, double matrixK[16], double matrixTR[16],
+__global__ void depthMapKernel(double* depths, double matrixK[Mat4x4], double matrixTR[Mat4x4],
   double* output)
 {
   // Get voxel coordinate according to thread id
   int i = threadIdx.x;
   int j = blockIdx.y;
   int k = blockIdx.z;
-  int voxelCoordinate[3] = { i, j, k };
+  int voxelCoordinate[Point3D] = { i, j, k };
 
   // Get the center of the voxel
-  double voxelCenterTemp[3];
+  double voxelCenterTemp[Point3D];
   computeVoxelCenter(voxelCoordinate, voxelCenterTemp);
 
   // Transform voxel from grid to real coord
-  double voxelCenter[3];
+  double voxelCenter[Point3D];
   transformFrom4Matrix(c_gridMatrix, voxelCenterTemp, voxelCenter);
 
   // Transform voxel center from real coord to camera coords
-  double voxelCenterCamera[3];
+  double voxelCenterCamera[Point3D];
   transformFrom4Matrix(matrixTR, voxelCenter, voxelCenterCamera);
 
   // Transform voxel center from camera coords to depth map homogeneous coords
-  double voxelCenterHomogen[3];
+  double voxelCenterHomogen[Point3D];
   transformFrom4Matrix(matrixK, voxelCenterCamera, voxelCenterHomogen);
 
   // Get voxel center on depth map coord
@@ -173,7 +176,7 @@ __global__ void depthMapKernel(double* depths, double matrixK[16], double matrix
   voxelCenterDepthMap[1] = voxelCenterHomogen[1] / voxelCenterHomogen[2];
 
   // Get real pixel position (approximation)
-  int pixel[3];
+  int pixel[Point3D];
   pixel[0] = round(voxelCenterDepthMap[0]);
   pixel[1] = round(voxelCenterDepthMap[1]);
   pixel[2] = 0;
@@ -260,9 +263,9 @@ __host__ void doubleTableToVtkDoubleArray(double* table, vtkDoubleArray* output)
 /** Main function **/
 int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth matrix and associated matrix
                    vtkMatrix4x4* i_gridMatrix, // Matrix to transform grid voxel to real coordinates
-                   int h_gridDims[3], // Dimensions of the output volume
-                   double h_gridOrig[3], // Origin of the output volume
-                   double h_gridSpacing[3], // Spacing of the output volume
+                   int h_gridDims[Dim3D], // Dimensions of the output volume
+                   double h_gridOrig[Point3D], // Origin of the output volume
+                   double h_gridSpacing[Dim3D], // Spacing of the output volume
                    double h_rayPThick,
                    double h_rayPRho,
                    vtkDoubleArray* io_outScalar) // It will be filled inside function
@@ -271,23 +274,21 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
     return -1;
 
   // Get usefull value for allocation of variables
-  const int matrix4Size = 16;
-  const int point3Size = 3;
   const int nbPixelOnDepthMap = h_dataList[0]->GetDepthMap()->GetNumberOfPoints();
   const int nbVoxels = io_outScalar->GetNumberOfTuples();
 
   // Fill texture and constant values
-  double* h_gridMatrix = new double[16];
+  double* h_gridMatrix = new double[Mat4x4];
   vtkMatrixToDoubleTable(i_gridMatrix, h_gridMatrix);
   double* h_outScalar = new double[nbVoxels];
   vtkDoubleArrayToTable(io_outScalar, h_outScalar);
 
 
   // Create and fill device value
-  cudaMemcpyToSymbol(c_gridMatrix, h_gridMatrix, matrix4Size * sizeof(double));
-  cudaMemcpyToSymbol(c_gridDims, h_gridDims, point3Size * sizeof(int));
-  cudaMemcpyToSymbol(c_gridOrig, h_gridOrig, point3Size * sizeof(double));
-  cudaMemcpyToSymbol(c_gridSpacing, h_gridSpacing, point3Size * sizeof(double));
+  cudaMemcpyToSymbol(c_gridMatrix, h_gridMatrix, Mat4x4 * sizeof(double));
+  cudaMemcpyToSymbol(c_gridDims, h_gridDims, Dim3D * sizeof(int));
+  cudaMemcpyToSymbol(c_gridOrig, h_gridOrig, Point3D * sizeof(double));
+  cudaMemcpyToSymbol(c_gridSpacing, h_gridSpacing, Dim3D * sizeof(double));
   cudaMemcpyToSymbol(c_rayPotentialThick, &h_rayPThick, sizeof(double));
   cudaMemcpyToSymbol(c_rayPotentialRho, &h_rayPRho, sizeof(double));
   double* d_outScalar;
@@ -295,7 +296,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   CudaErrorCheck(cudaMemcpy(d_outScalar, h_outScalar, nbVoxels * sizeof(double), cudaMemcpyHostToDevice));
 
 
-  int h_dimDepthMap[3];
+  int h_dimDepthMap[Dim3D];
   h_dataList[0]->GetDepthMap()->GetDimensions(h_dimDepthMap);
   CudaErrorCheck(cudaMemcpyToSymbol(c_depthMapDims, h_dimDepthMap, 2 * sizeof(int)));
 
@@ -306,8 +307,8 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   // Create device data from host value
   double *d_depthMap, *d_matrixK, *d_matrixRT;
   CudaErrorCheck(cudaMalloc((void**)&d_depthMap, nbPixelOnDepthMap * sizeof(double)));
-  CudaErrorCheck(cudaMalloc((void**)&d_matrixK, matrix4Size * sizeof(double)));
-  CudaErrorCheck(cudaMalloc((void**)&d_matrixRT, matrix4Size * sizeof(double)));
+  CudaErrorCheck(cudaMalloc((void**)&d_matrixK, Mat4x4 * sizeof(double)));
+  CudaErrorCheck(cudaMalloc((void**)&d_matrixRT, Mat4x4 * sizeof(double)));
   
   for (int i = 0; i < h_dataList.size(); i++)
     {
@@ -315,17 +316,17 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
     ReconstructionData* currentData = h_dataList[i];
     double* h_depthMap = new double[nbPixelOnDepthMap];
     vtkImageDataToTable(currentData->GetDepthMap(), h_depthMap);
-    double* h_matrixK = new double[16];
+    double* h_matrixK = new double[Mat4x4];
     vtkMatrixToDoubleTable(currentData->Get4MatrixK(), h_matrixK);
-    double* h_matrixRT = new double[16];
+    double* h_matrixRT = new double[Mat4x4];
     vtkMatrixToDoubleTable(currentData->GetMatrixTR(), h_matrixRT);
 
     CudaErrorCheck(cudaMemcpy(d_depthMap, h_depthMap, nbPixelOnDepthMap * sizeof(double), cudaMemcpyHostToDevice));
-    CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, matrix4Size * sizeof(double), cudaMemcpyHostToDevice));
-    CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, matrix4Size * sizeof(double), cudaMemcpyHostToDevice));
+    CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, Mat4x4 * sizeof(double), cudaMemcpyHostToDevice));
+    CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, Mat4x4 * sizeof(double), cudaMemcpyHostToDevice));
 
     // run code into device
-    depthMapKernel <<<dimGrid, dimBlock >>>(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
+    depthMapKernel <<< dimGrid, dimBlock >>>(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
 
     // Wait that all threads have finished
     CudaErrorCheck(cudaDeviceSynchronize());
