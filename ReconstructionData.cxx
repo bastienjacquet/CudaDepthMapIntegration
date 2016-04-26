@@ -1,5 +1,9 @@
 #include "ReconstructionData.h"
 
+// VTK includes
+#include "vtkDoubleArray.h"
+#include "vtkPointData.h"
+
 ReconstructionData::ReconstructionData()
 {
   this->depthMap = nullptr;
@@ -35,6 +39,34 @@ vtkMatrix4x4* ReconstructionData::Get4MatrixK()
 vtkMatrix4x4* ReconstructionData::GetMatrixTR()
 {
   return this->matrixTR;
+}
+
+void ReconstructionData::ApplyDepthThresholdFilter(double thresholdBestCost,
+                                                   double thresholdUniqueness)
+{
+  if (this->depthMap == nullptr)
+    return;
+
+  vtkDoubleArray* depths =
+    vtkDoubleArray::SafeDownCast(this->depthMap->GetPointData()->GetArray("Depths"));
+  vtkDoubleArray* bestCost =
+    vtkDoubleArray::SafeDownCast(this->depthMap->GetPointData()->GetArray("Best Cost Values"));
+  vtkDoubleArray* uniqueness =
+    vtkDoubleArray::SafeDownCast(this->depthMap->GetPointData()->GetArray("Uniqueness Ratios"));
+
+  int nbTuples = depths->GetNumberOfTuples();
+
+  if (bestCost->GetNumberOfTuples() != nbTuples &&
+    uniqueness->GetNumberOfTuples() != nbTuples)
+    return;
+
+  for (int i = 0; i < nbTuples; i++)
+  {
+    double v_bestCost = bestCost->GetTuple1(i);
+    double v_uniqueness = uniqueness->GetTuple1(i);
+    if (v_bestCost > thresholdBestCost && v_uniqueness > thresholdUniqueness)
+      depths->SetTuple1(i, -1);
+  }
 }
 
 void ReconstructionData::SetDepthMap(vtkImageData* data)

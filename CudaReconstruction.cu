@@ -197,11 +197,13 @@ __global__ void depthMapKernel(TCompute* depths, TCompute matrixK[Mat4x4], TComp
   int gridId = computeVoxelID(voxelCoordinate, 1);  // Get the distance between voxel and camera
   TCompute realDepth = norm(voxelCenterCamera);
   TCompute depth = depths[depthMapId];
-  TVolumetric newValue;
-  rayPotential<TVolumetric>(realDepth, depth, newValue);
-
-  // Update the value to the output
-  output[gridId] += newValue;
+  if (depth != -1)
+  {
+    TVolumetric newValue;
+    rayPotential<TVolumetric>(realDepth, depth, newValue);
+    // Update the value to the output
+    output[gridId] += newValue;
+  }
 }
 
 

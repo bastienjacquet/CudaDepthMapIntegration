@@ -67,6 +67,8 @@ double rayPotentialThick = 2; // Define parameter 'thick' on ray potential funct
 double rayPotentialRho = 3; // Define parameter 'rho' on ray potential function when cuda is using
 double rayPotentialEta = 1;
 double rayPotentialDelta = 1;
+double thresholdBestCost = 0;
+double thresholdUniqueness = 0;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 
@@ -191,8 +193,10 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default kList.txt)");
   arg.AddArgument("--rayThick", argT::SPACE_ARGUMENT, &rayPotentialThick, "Define the ray potential thickness threshold when cuda is using (default 2)");
   arg.AddArgument("--rayRho", argT::SPACE_ARGUMENT, &rayPotentialRho, "Define the ray potential rho when cuda is using (default 3)");
-  arg.AddArgument("--rayEta", argT::SPACE_ARGUMENT, &rayPotentialEta, "");
-  arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "");
+  arg.AddArgument("--rayEta", argT::SPACE_ARGUMENT, &rayPotentialEta, "0 < Eta < 1 : will be applied as a percentage of rho");
+  arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "It has to be superior to Thick");
+  arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map");
+  arg.AddArgument("--threshUniqueness", argT::SPACE_ARGUMENT, &thresholdUniqueness, "Define threshold that will be applied on depth map");
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
@@ -204,7 +208,8 @@ bool ReadArguments(int argc, char ** argv)
     return false;
     }
 
-  if (g_outputGridFilename == "" || g_depthMapContainer == "" || g_KRTContainer == "")
+  if (g_outputGridFilename == "" || g_depthMapContainer == "" || g_KRTContainer == "" ||
+      rayPotentialDelta < rayPotentialThick || rayPotentialEta < 0 || rayPotentialEta > 1)
     {
     std::cerr << "Error arguments." << std::endl;
     std::cerr << arg.GetHelp();
@@ -309,6 +314,8 @@ bool CreateReconstructionData()
     data->SetDepthMap(depthMapReader->GetOutput());
     data->SetMatrixK(depthMapMatrixK);
     data->SetMatrixTR(depthMapMatrixTR);
+    // Set depth to -1 if associated bestCost and Uniqueness are superior to threshold
+    data->ApplyDepthThresholdFilter(thresholdBestCost, thresholdUniqueness);
 
     g_dataList.push_back(data);
     }
@@ -459,6 +466,11 @@ void ShowFilledParameters()
   std::cout << l1 << std::endl;
   std::cout << l2 << std::endl;
   std::cout << l3 << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "** DEPTH MAP :" << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "--- Threshold for BestCost  : " << std::to_string(thresholdBestCost) << std::endl;
+  std::cout << "--- Threshold for Uniqueness : " << std::to_string(thresholdUniqueness) << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "** CUDA :" << std::endl;
   std::cout << "----------------------" << std::endl;

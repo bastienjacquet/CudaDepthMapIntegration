@@ -21,6 +21,8 @@ public:
   void SetMatrixK(vtkMatrix3x3* matrix);
   void SetMatrixTR(vtkMatrix4x4* matrix);
 
+  void ApplyDepthThresholdFilter(double thresholdBestCost, double thresholdUniqueness);
+
 private:
   vtkImageData* depthMap;
   vtkMatrix3x3* matrixK;
