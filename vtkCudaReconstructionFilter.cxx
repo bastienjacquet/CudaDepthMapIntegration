@@ -57,7 +57,7 @@ vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatr
 template<typename TVolumetric>
 int reconstruction(std::vector<ReconstructionData*> i_dataList, vtkMatrix4x4* i_gridMatrix, 
   int h_gridDims[3], double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick,
-  double h_rayPRho, vtkDoubleArray* h_outScalar);
+  double h_rayPRho, double h_rayPEta, double h_rayPDelta, vtkDoubleArray* h_outScalar);
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
@@ -157,7 +157,8 @@ int vtkCudaReconstructionFilter::RequestData(
       }
 
     reconstruction<double>(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing,
-                   this->RayPotentialThickness, this->RayPotentialRho, outScalar.Get());
+                   this->RayPotentialThickness, this->RayPotentialRho,
+                   this->RayPotentialEta, this->RayPotentialDelta, outScalar.Get());
     }
 
   clock_t end = clock();
@@ -271,11 +272,15 @@ void vtkCudaReconstructionFilter::RayPotential(double realDistance,
 {
   double diff = realDistance - depthMapDistance;
 
-  shift = (this->RayPotentialRho / this->RayPotentialThickness) * diff;
-  if (shift > this->RayPotentialRho)
-    shift = this->RayPotentialRho;
-  else if (shift < -this->RayPotentialRho)
-    shift = -this->RayPotentialRho;
+  double absolute = abs(diff);
+  int sign = diff / absolute;
+
+  if (absolute > this->RayPotentialDelta)
+    shift = diff > 0 ? 0 : -this->RayPotentialEta;
+  else if (absolute > this->RayPotentialThickness)
+    shift = this->RayPotentialRho*sign;
+  else
+    shift = (this->RayPotentialRho / this->RayPotentialThickness)* diff;
 }
 
 

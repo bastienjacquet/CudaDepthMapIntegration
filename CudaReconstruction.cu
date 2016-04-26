@@ -53,6 +53,8 @@ __constant__ TCompute c_gridSpacing[Dim3D]; // Spacing of the output volume
 __constant__ int2 c_depthMapDims; // Dimensions of all depths map
 __constant__ TCompute c_rayPotentialThick; // Thickness threshold for the ray potential function
 __constant__ TCompute c_rayPotentialRho; // Rho at the Y axis for the ray potential function
+__constant__ TCompute c_rayPotentialEta;
+__constant__ TCompute c_rayPotentialDelta;
 
 // ----------------------------------------------------------------------------
 /* Macro called to catch cuda error when cuda functions is called */
@@ -92,11 +94,16 @@ __device__ void rayPotential(TCompute realDistance, TCompute depthMapDistance, T
 {
   TCompute diff = (realDistance - depthMapDistance);
 
-  res = (c_rayPotentialRho / c_rayPotentialThick)* diff;
-  if (res > c_rayPotentialRho)
-    res = c_rayPotentialRho;
-  else if (res < -c_rayPotentialRho)
-    res = -c_rayPotentialRho;
+  TCompute absolute = abs(diff);
+  // Can't divide by zero
+  int sign = diff != 0 ? diff / absolute : 0;
+
+  if (absolute > c_rayPotentialDelta)
+    res = diff > 0 ? 0 : -c_rayPotentialEta;
+  else if (abs(diff) > c_rayPotentialThick)
+    res = c_rayPotentialRho*sign;
+  else
+    res = (c_rayPotentialRho / c_rayPotentialThick)* diff;
 }
 
 
@@ -265,6 +272,8 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
                    double h_gridSpacing[Dim3D], // Spacing of the output volume
                    double h_rayPThick,
                    double h_rayPRho,
+                   double h_rayPEta,
+                   double h_rayPDelta,
                    vtkDoubleArray* io_outScalar) // It will be filled inside function
 {
   if (h_dataList.size() == 0)
@@ -288,6 +297,8 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   cudaMemcpyToSymbol(c_gridSpacing, h_gridSpacing, Dim3D * sizeof(TCompute));
   cudaMemcpyToSymbol(c_rayPotentialThick, &h_rayPThick, sizeof(TCompute));
   cudaMemcpyToSymbol(c_rayPotentialRho, &h_rayPRho, sizeof(TCompute));
+  cudaMemcpyToSymbol(c_rayPotentialEta, &h_rayPEta, sizeof(TCompute));
+  cudaMemcpyToSymbol(c_rayPotentialDelta, &h_rayPDelta, sizeof(TCompute));
   TVolumetric* d_outScalar;
   CudaErrorCheck(cudaMalloc((void**)&d_outScalar, nbVoxels * sizeof(TVolumetric)));
   CudaErrorCheck(cudaMemcpy(d_outScalar, h_outScalar, nbVoxels * sizeof(TVolumetric), cudaMemcpyHostToDevice));
@@ -358,12 +369,12 @@ template
 int reconstruction<double>(std::vector<ReconstructionData*> h_dataList,
   vtkMatrix4x4* i_gridMatrix, int h_gridDims[Dim3D],
   double h_gridOrig[Point3D],double h_gridSpacing[Dim3D],
-  double h_rayPThick,double h_rayPRho, vtkDoubleArray* io_outScalar);
+  double h_rayPThick,double h_rayPRho, double h_rayPEta, double h_rayPDelta, vtkDoubleArray* io_outScalar);
 
 template
 int reconstruction <float>(std::vector<ReconstructionData*> h_dataList,
   vtkMatrix4x4* i_gridMatrix,int h_gridDims[Dim3D],
   double h_gridOrig[Point3D],double h_gridSpacing[Dim3D],
-  double h_rayPThick,double h_rayPRho,vtkDoubleArray* io_outScalar);
+  double h_rayPThick, double h_rayPRho, double h_rayPEta, double h_rayPDelta, vtkDoubleArray* io_outScalar);
 
 #endif

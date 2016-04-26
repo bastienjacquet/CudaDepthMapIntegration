@@ -60,6 +60,8 @@ public:
   // Description:
   // Define the rho value (Y axis) of the ray potential function when using cuda
   vtkSetMacro(RayPotentialRho, double);
+  vtkSetMacro(RayPotentialEta, double);
+  vtkSetMacro(RayPotentialDelta, double);
   // Description :
   // Define if algorithm is launched on the GPU with cuda (or not)
   vtkSetMacro(UseCuda, bool);
@@ -115,6 +117,8 @@ protected:
   vtkMatrix4x4 *GridMatrix;
   double RayPotentialRho;
   double RayPotentialThickness;
+  double RayPotentialEta;
+  double RayPotentialDelta;
   bool UseCuda;
   double ExecutionTime;
 

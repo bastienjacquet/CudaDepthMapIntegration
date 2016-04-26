@@ -65,6 +65,8 @@ std::string g_depthMapContainer = "vtiList.txt"; // File which contains all path
 std::string g_KRTContainer = "kList.txt"; // File which contains all path of KRT matrix ofr each depth map
 double rayPotentialThick = 2; // Define parameter 'thick' on ray potential function when cuda is using
 double rayPotentialRho = 3; // Define parameter 'rho' on ray potential function when cuda is using
+double rayPotentialEta = 1;
+double rayPotentialDelta = 1;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 
@@ -130,6 +132,8 @@ int main(int argc, char ** argv)
     cudaReconstructionFilter->UseCudaOn();
   cudaReconstructionFilter->SetRayPotentialRho(rayPotentialRho);
   cudaReconstructionFilter->SetRayPotentialThickness(rayPotentialThick);
+  cudaReconstructionFilter->SetRayPotentialEta(rayPotentialEta);
+  cudaReconstructionFilter->SetRayPotentialDelta(rayPotentialDelta);
   cudaReconstructionFilter->SetInputData(grid.Get());
   cudaReconstructionFilter->SetDataList(g_dataList);
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
@@ -187,6 +191,8 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default kList.txt)");
   arg.AddArgument("--rayThick", argT::SPACE_ARGUMENT, &rayPotentialThick, "Define the ray potential thickness threshold when cuda is using (default 2)");
   arg.AddArgument("--rayRho", argT::SPACE_ARGUMENT, &rayPotentialRho, "Define the ray potential rho when cuda is using (default 3)");
+  arg.AddArgument("--rayEta", argT::SPACE_ARGUMENT, &rayPotentialEta, "");
+  arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "");
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
@@ -458,6 +464,8 @@ void ShowFilledParameters()
   std::cout << "----------------------" << std::endl;
   std::cout << "--- Thickness ray potential : " << rayPotentialThick << std::endl;
   std::cout << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
+  std::cout << "--- Eta ray potential :       " << rayPotentialEta << std::endl;
+  std::cout << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
   std::cout << "--- Use cuda :                " << !noCuda << std::endl;
   std::cout << std::endl;
   std::cout << std::endl;
