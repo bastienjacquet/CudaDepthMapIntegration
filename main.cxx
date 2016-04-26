@@ -237,7 +237,8 @@ required to launch the process
 */
 bool CreateReconstructionData()
 {
-  ShowInformation("Read depth map and matrix files...");
+  ShowInformation("** Read depth map and matrix files...");
+  clock_t start = clock();
 
   std::string dmapGlobalFile = g_pathFolder + "\\" + g_depthMapContainer;
   std::string krtGlobalFile = g_pathFolder + "\\" + g_KRTContainer;
@@ -310,7 +311,10 @@ bool CreateReconstructionData()
   if (g_dataList.size() == 0)
     return false;
 
-  std::string info = std::to_string(g_dataList.size()) + " depth map have been loaded.";
+  double time = (clock() - start) / CLOCKS_PER_SEC;
+
+  std::string info = std::to_string(g_dataList.size()) + " depth map have been loaded.\n";
+  info += "Reading time : " + std::to_string(time) + " s\n";
   ShowInformation(info);
 
   return true;
@@ -402,12 +406,6 @@ void CreateGridMatrixFromInput()
 
   g_gridMatrix = gridMatrix;
 
-  // Debug information
-  std::string l1 = std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
-  std::string l2 = std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
-  std::string l3 = std::to_string(g_gridVecX[2]) + "  " + std::to_string(g_gridVecY[2]) + "  " + std::to_string(g_gridVecZ[2]) + "\n";
-  std::string info = "Reconstruct grid matrix : \n" + l1 + l2 + l3;
-  ShowInformation(info);
 }
 
 //-----------------------------------------------------------------------------
@@ -447,6 +445,7 @@ void ShowFilledParameters()
   std::cout << "--- Spacing    : ( " << g_gridSpacing[0] << ", " << g_gridSpacing[1] << ", " << g_gridSpacing[2] << " )" << std::endl;
   std::cout << "--- Origin     : ( " << g_gridOrigin[0] << ", " << g_gridOrigin[1] << ", " << g_gridOrigin[2] << " )" << std::endl;
   std::cout << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
+  std::cout << "--- Real volume size : ( " << g_gridDims[0] * g_gridSpacing[0] << ", " << g_gridDims[1] * g_gridSpacing[1] << ", " << g_gridDims[2] * g_gridSpacing[2] << ")" << std::endl;
   std::cout << "--- Matrix :" << std::endl;
     std::string l1 = "  " + std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
     std::string l2 = "  " + std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
@@ -460,5 +459,6 @@ void ShowFilledParameters()
   std::cout << "--- Thickness ray potential : " << rayPotentialThick << std::endl;
   std::cout << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
   std::cout << "--- Use cuda :                " << !noCuda << std::endl;
+  std::cout << std::endl;
   std::cout << std::endl;
 }
