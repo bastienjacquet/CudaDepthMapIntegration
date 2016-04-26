@@ -54,6 +54,7 @@ vtkStandardNewMacro(vtkCudaReconstructionFilter);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
 
 // Define the function signature in .cu file in order to be recognize inside the file
+template<typename TVolumetric>
 int reconstruction(std::vector<ReconstructionData*> i_dataList, vtkMatrix4x4* i_gridMatrix, 
   int h_gridDims[3], double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick,
   double h_rayPRho, vtkDoubleArray* h_outScalar);
@@ -155,7 +156,7 @@ int vtkCudaReconstructionFilter::RequestData(
       return 0;
       }
 
-    reconstruction(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing,
+    reconstruction<double>(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing,
                    this->RayPotentialThickness, this->RayPotentialRho, outScalar.Get());
     }
 

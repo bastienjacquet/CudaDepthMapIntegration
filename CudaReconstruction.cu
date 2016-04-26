@@ -43,8 +43,6 @@
 #define Dim3D 3
 // Apply to matrix, computes on 3D point
 typedef double TCompute;
-// Apply to input depth map data and output scalar
-typedef double TVolumetric;
 
 // ----------------------------------------------------------------------------
 /* Define texture and constants */
@@ -89,6 +87,7 @@ __device__ TCompute norm(TCompute vec[Dim3D])
 
 // ----------------------------------------------------------------------------
 /* Ray potential function which computes the increment to the current voxel */
+template<typename TVolumetric>
 __device__ void rayPotential(TCompute realDistance, TCompute depthMapDistance, TVolumetric& res)
 {
   TCompute diff = (realDistance - depthMapDistance);
@@ -141,6 +140,7 @@ __device__ void computeVoxelCenter(int voxelCoordinate[Point3D], TCompute output
   matrixTR : matrixTR
   output : double table that will be filled at the end of function
 */
+template<typename TVolumetric>
 __global__ void depthMapKernel(TCompute* depths, TCompute matrixK[Mat4x4], TCompute matrixTR[Mat4x4],
   TVolumetric* output)
 {
@@ -191,7 +191,7 @@ __global__ void depthMapKernel(TCompute* depths, TCompute matrixK[Mat4x4], TComp
   TCompute realDepth = norm(voxelCenterCamera);
   TCompute depth = depths[depthMapId];
   TVolumetric newValue;
-  rayPotential(realDepth, depth, newValue);
+  rayPotential<TVolumetric>(realDepth, depth, newValue);
 
   // Update the value to the output
   output[gridId] += newValue;
@@ -244,6 +244,7 @@ __host__ void vtkImageDataToTable(vtkImageData* image, TCompute* output)
 
 // ----------------------------------------------------------------------------
 /* Fill a vtkDoubleArray from a double table */
+template<typename TVolumetric>
 __host__ void doubleTableToVtkDoubleArray(TVolumetric* table, vtkDoubleArray* output)
 {
   int nbVoxels = output->GetNumberOfTuples();
@@ -256,6 +257,7 @@ __host__ void doubleTableToVtkDoubleArray(TVolumetric* table, vtkDoubleArray* ou
 
 // ----------------------------------------------------------------------------
 /** Main function **/
+template <typename TVolumetric>
 int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth matrix and associated matrix
                    vtkMatrix4x4* i_gridMatrix, // Matrix to transform grid voxel to real coordinates
                    int h_gridDims[Dim3D], // Dimensions of the output volume
@@ -321,7 +323,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
     CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, Mat4x4 * sizeof(TCompute), cudaMemcpyHostToDevice));
 
     // run code into device
-    depthMapKernel <<< dimGrid, dimBlock >>>(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
+    depthMapKernel<TVolumetric> <<< dimGrid, dimBlock >>>(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
 
     // Wait that all threads have finished
     CudaErrorCheck(cudaDeviceSynchronize());
@@ -336,7 +338,7 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
   cudaMemcpy(h_outScalar, d_outScalar, nbVoxels * sizeof(TVolumetric), cudaMemcpyDeviceToHost);
 
   // Transfer host data to output
-  doubleTableToVtkDoubleArray(h_outScalar, io_outScalar);
+  doubleTableToVtkDoubleArray<TVolumetric>(h_outScalar, io_outScalar);
 
   // Clean memory
   delete(h_gridMatrix);
@@ -348,5 +350,20 @@ int reconstruction(std::vector<ReconstructionData*> h_dataList, // List of depth
 
   return 1;
 }
+
+
+// ----------------------------------------------------------------------------
+// Define template for the compiler
+template
+int reconstruction<double>(std::vector<ReconstructionData*> h_dataList,
+  vtkMatrix4x4* i_gridMatrix, int h_gridDims[Dim3D],
+  double h_gridOrig[Point3D],double h_gridSpacing[Dim3D],
+  double h_rayPThick,double h_rayPRho, vtkDoubleArray* io_outScalar);
+
+template
+int reconstruction <float>(std::vector<ReconstructionData*> h_dataList,
+  vtkMatrix4x4* i_gridMatrix,int h_gridDims[Dim3D],
+  double h_gridOrig[Point3D],double h_gridSpacing[Dim3D],
+  double h_rayPThick,double h_rayPRho,vtkDoubleArray* io_outScalar);
 
 #endif
