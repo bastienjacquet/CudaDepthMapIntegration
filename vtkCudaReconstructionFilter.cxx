@@ -343,7 +343,7 @@ std::vector<std::string> vtkCudaReconstructionFilter::ExtractAllFilePath(const c
     std::getline(container, path);
     // only get the file name, not the whole path
     std::vector <std::string> elems;
-    vtkCudaReconstructionFilter::SplitString(path, '/', elems);
+    vtkCudaReconstructionFilter::SplitString(path, ' ', elems);
 
     // check if there are an empty line
     if (elems.size() == 0)

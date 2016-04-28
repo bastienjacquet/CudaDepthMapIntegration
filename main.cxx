@@ -155,6 +155,7 @@ int main(int argc, char ** argv)
   vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
 
   ShowInformation("** Save output...");
+  ShowInformation("Output path : " + g_outputGridFilename);
 
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
   gridWriter->SetFileName(g_outputGridFilename.c_str());
