@@ -44,20 +44,27 @@
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStructuredGrid.h"
+#include <vtksys/SystemTools.hxx>
 #include "vtkTransform.h"
+#include "vtkXMLImageDataReader.h"
 
 #include <cmath>
 #include <vector>
 #include <time.h>
+#include <string>
+#include <sstream>
 
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
 
-// Define the function signature in .cu file in order to be recognize inside the file
-template<typename TVolumetric>
-int reconstruction(std::vector<ReconstructionData*> i_dataList, vtkMatrix4x4* i_gridMatrix, 
-  int h_gridDims[3], double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick,
-  double h_rayPRho, double h_rayPEta, double h_rayPDelta, vtkDoubleArray* h_outScalar);
+
+void CudaInitialize(vtkMatrix4x4* i_gridMatrix, int h_gridDims[3],
+  double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick, double h_rayPRho,
+  double h_rayPEta, double h_rayPDelta, int h_depthMapDim[2]);
+
+template <typename TVolumetric>
+bool ProcessDepthMap(std::vector<std::string> vtiList,std::vector<std::string> krtdList,
+  double thresholdBestCost, vtkDoubleArray* io_scalar);
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
@@ -67,18 +74,17 @@ vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
   this->UseCuda = false;
   this->RayPotentialRho = 0;
   this->RayPotentialThickness = 0;
+  this->RayPotentialDelta = 0;
+  this->RayPotentialEta = 0;
+  this->ThresholdBestCost = 0;
+  this->FilePathKRTD = 0;
+  this->FilePathVTI = 0;
 }
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
 {
   this->DataList.clear();
-}
-
-//----------------------------------------------------------------------------
-void vtkCudaReconstructionFilter::SetDataList(std::vector<ReconstructionData*> list)
-{
-  this->DataList = list;
 }
 
 //----------------------------------------------------------------------------
@@ -112,7 +118,7 @@ int vtkCudaReconstructionFilter::RequestData(
   vtkImageData *outGrid = vtkImageData::SafeDownCast(
     outGridInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  if (this->DataList.size() == 0 || this->GridMatrix == 0)
+  if (this->FilePathKRTD == 0 || this->FilePathVTI == 0)
     {
     std::cerr << "Error, some inputs have not been set." << std::endl;
     return 0;
@@ -138,14 +144,15 @@ int vtkCudaReconstructionFilter::RequestData(
   // computation
   if (!this->UseCuda)
     {
-    for (int i = 0; i < this->DataList.size(); i++)
-      {
-      ReconstructionData* currentData = this->DataList[i];
-      vtkCudaReconstructionFilter::ComputeWithoutCuda(
-        this->GridMatrix, gridOrig, gridDims, gridSpacing,
-        currentData->GetDepthMap(), currentData->Get3MatrixK(), currentData->GetMatrixTR(),
-        outScalar.Get());
-      }
+    // TODO
+    //for (int i = 0; i < this->DataList.size(); i++)
+    //  {
+    //  ReconstructionData* currentData = this->DataList[i];
+    //  vtkCudaReconstructionFilter::ComputeWithoutCuda(
+    //    this->GridMatrix, gridOrig, gridDims, gridSpacing,
+    //    currentData->GetDepthMap(), currentData->Get3MatrixK(), currentData->GetMatrixTR(),
+    //    outScalar.Get());
+    //  }
     }
   else
     {
@@ -156,9 +163,8 @@ int vtkCudaReconstructionFilter::RequestData(
       return 0;
       }
 
-    reconstruction<double>(this->DataList, this->GridMatrix, gridDims, gridOrig, gridSpacing,
-                   this->RayPotentialThickness, this->RayPotentialRho,
-                   this->RayPotentialEta, this->RayPotentialDelta, outScalar.Get());
+    this->ComputeWithCuda(gridDims, gridOrig, gridSpacing, outScalar.Get());
+
     }
 
   clock_t end = clock();
@@ -266,6 +272,33 @@ int vtkCudaReconstructionFilter::ComputeWithoutCuda(
 }
 
 //----------------------------------------------------------------------------
+int vtkCudaReconstructionFilter::ComputeWithCuda(int gridDims[3], double gridOrig[3],
+  double gridSpacing[3], vtkDoubleArray* outScalar)
+{
+  std::vector<std::string> vtiList = vtkCudaReconstructionFilter::ExtractAllFilePath(this->FilePathVTI);
+  std::vector<std::string> krtdList = vtkCudaReconstructionFilter::ExtractAllFilePath(this->FilePathKRTD);
+
+  if (vtiList.size() == 0 || krtdList.size() < vtiList.size())
+    {
+    std::cerr << "Error : There is no enough vti files, please check your vtiList.txt and krtdList.txt" << std::endl;
+    return -1;
+    }
+
+  ReconstructionData data0(vtiList[0], krtdList[0]);
+  int* depthMapGrid = data0.GetDepthMap()->GetDimensions();
+
+  // Initialize Cuda constant
+  CudaInitialize(this->GridMatrix, gridDims, gridOrig, gridSpacing,
+    this->RayPotentialThickness, this->RayPotentialRho,
+    this->RayPotentialEta, this->RayPotentialDelta, depthMapGrid);
+
+  bool result = ProcessDepthMap<double>(vtiList, krtdList, this->ThresholdBestCost,
+                                outScalar);
+
+  return 0;
+}
+
+//----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::RayPotential(double realDistance,
                                                 double depthMapDistance,
                                                 double& shift)
@@ -283,6 +316,126 @@ void vtkCudaReconstructionFilter::RayPotential(double realDistance,
     shift = (this->RayPotentialRho / this->RayPotentialThickness)* diff;
 }
 
+//----------------------------------------------------------------------------
+std::vector<std::string> vtkCudaReconstructionFilter::ExtractAllFilePath(const char* globalPath)
+{
+  std::vector<std::string> pathList;
+
+  // Open file which contains the list of all file
+  std::ifstream container(globalPath);
+  if (!container.is_open())
+    {
+    std::cerr << "Unable to open : " << globalPath << std::endl;
+    return pathList;
+    }
+
+  // Extract path of globalPath from globalPath
+  std::string directoryPath = vtksys::SystemTools::GetFilenamePath(std::string(globalPath));
+  // Get current working directory
+  if (directoryPath == "")
+  {
+    directoryPath = vtksys::SystemTools::GetCurrentWorkingDirectory();
+  }
+
+  std::string path;
+  while (!container.eof())
+  {
+    std::getline(container, path);
+    // only get the file name, not the whole path
+    std::vector <std::string> elems;
+    vtkCudaReconstructionFilter::SplitString(path, '/', elems);
+
+    // check if there are an empty line
+    if (elems.size() == 0)
+    {
+      continue;
+    }
+
+    // Create the real data path to access depth map file
+    pathList.push_back(directoryPath + "/" + elems[elems.size() - 1]);
+  }
+
+  return pathList;
+}
+
+//----------------------------------------------------------------------------
+void  vtkCudaReconstructionFilter::SplitString( const std::string &s, char delim,
+                                                std::vector<std::string> &elems)
+{
+  std::stringstream ss(s);
+  std::string item;
+  while (std::getline(ss, item, delim))
+  {
+    elems.push_back(item);
+  }
+}
+
+//----------------------------------------------------------------------------
+bool vtkCudaReconstructionFilter::ReadKrtdFile(std::string filename,
+                                               vtkMatrix3x3* matrixK,
+                                               vtkMatrix4x4* matrixTR)
+{
+  // Open the file
+  std::ifstream file(filename.c_str());
+  if (!file.is_open())
+  {
+    std::cerr << "Unable to open krtd file : " << filename << std::endl;
+    return false;
+  }
+
+  std::string line;
+
+  // Get matrix K
+  for (int i = 0; i < 3; i++)
+  {
+    getline(file, line);
+    std::istringstream iss(line);
+
+    for (int j = 0; j < 3; j++)
+    {
+      double value;
+      iss >> value;
+      matrixK->SetElement(i, j, value);
+    }
+  }
+
+  getline(file, line);
+
+  // Get matrix R
+  for (int i = 0; i < 3; i++)
+  {
+    getline(file, line);
+    std::istringstream iss(line);
+
+    for (int j = 0; j < 3; j++)
+    {
+      double value;
+      iss >> value;
+      matrixTR->SetElement(i, j, value);
+    }
+  }
+
+  getline(file, line);
+
+  // Get matrix T
+  getline(file, line);
+  std::istringstream iss(line);
+  for (int i = 0; i < 3; i++)
+  {
+    double value;
+    iss >> value;
+    matrixTR->SetElement(i, 3, value);
+  }
+
+  // Finalize matrix TR
+  for (int j = 0; j < 4; j++)
+  {
+    matrixTR->SetElement(3, j, 0);
+  }
+  matrixTR->SetElement(3, 3, 1);
+
+  return true;
+}
 
 //----------------------------------------------------------------------------
 int vtkCudaReconstructionFilter::RequestInformation(

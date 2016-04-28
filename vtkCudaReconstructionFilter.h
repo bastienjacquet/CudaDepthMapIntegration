@@ -60,8 +60,24 @@ public:
   // Description:
   // Define the rho value (Y axis) of the ray potential function when using cuda
   vtkSetMacro(RayPotentialRho, double);
+  // Description :
+  // Define a percentage of rho value for supposed empty voxel between filled voxel and camera
   vtkSetMacro(RayPotentialEta, double);
+  // Description :
+  // Define accepted voxel before/after filled voxel
   vtkSetMacro(RayPotentialDelta, double);
+  // Description :
+  // Threshold that will be applied on vtkImageData depth map according to BestCost
+  vtkSetMacro(ThresholdBestCost, double);
+  // Description :
+  // Entire path to access file that contains all krtd file names
+  // krtd files have to be in the same folder as FilePathKRTD
+  vtkSetMacro(FilePathKRTD, const char*);
+  // Description :
+  // Entire path to access file that contains all vti file names
+  // vti files have to be in the same folder as FilePathVTI
+  vtkSetMacro(FilePathVTI, const char*);
+
   // Description :
   // Define if algorithm is launched on the GPU with cuda (or not)
   vtkSetMacro(UseCuda, bool);
@@ -75,24 +91,10 @@ public:
   // Description :
   // The algorithm will be launched withou cuda on CPU (slow)
   void UseCudaOff();
-
-  // Description:
-  // Specify the depth map.
-  void SetDepthMap(vtkImageData *depthMap);
-
-  // Description:
-  // Specify the depth map transform matrix: K.
-  void SetDepthMapMatrixK(vtkMatrix3x3 *depthMapMatrixK);
-  // Description:
-  // Specify the depth map transform matrix: R, T.
-  void SetDepthMapMatrixTR(vtkMatrix4x4 *depthMapMatrixTR);
   // Description
   // Define the matrix transform to orientate the output volume
   // to the right axis
   void SetGridMatrix(vtkMatrix4x4 *gridMatrix);
-  // Description:
-  // List all data with depthMap and KRT matrix
-  void SetDataList(std::vector<ReconstructionData*> list);
 
 //BTX
 protected:
@@ -111,7 +113,22 @@ protected:
     vtkImageData* depthMap, vtkMatrix3x3 *depthMapMatrixK, vtkMatrix4x4 *depthMapMatrixTR,
     vtkDoubleArray* outScalar);
 
+  int ComputeWithCuda(int gridDims[3], double gridOrig[3],
+                      double gridSpacing[3], vtkDoubleArray* outScalar);
+
   void RayPotential(double realDistance, double depthMapDistance, double& val);
+
+  // Description :
+  // Read input file and extract all path of file name
+  static std::vector<std::string> ExtractAllFilePath(const char* globalPath);
+
+  // Description :
+  // Split a string from a delimiter char and return a vector of extracted words
+  static void SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
+
+  // Description :
+  // Read .krtd file which contains 2 matrix
+  bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
 
   std::vector<ReconstructionData*> DataList;
   vtkMatrix4x4 *GridMatrix;
@@ -119,8 +136,11 @@ protected:
   double RayPotentialThickness;
   double RayPotentialEta;
   double RayPotentialDelta;
+  double ThresholdBestCost;
   bool UseCuda;
   double ExecutionTime;
+  const char* FilePathKRTD;
+  const char* FilePathVTI;
 
 private:
   vtkCudaReconstructionFilter(const vtkCudaReconstructionFilter&);  // Not implemented.

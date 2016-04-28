@@ -10,6 +10,7 @@ class ReconstructionData
 {
 public:
   ReconstructionData();
+  ReconstructionData(std::string depthPath, std::string matrixPath);
   ~ReconstructionData();
 
   vtkImageData* GetDepthMap();
@@ -21,9 +22,14 @@ public:
   void SetMatrixK(vtkMatrix3x3* matrix);
   void SetMatrixTR(vtkMatrix4x4* matrix);
 
-  void ApplyDepthThresholdFilter(double thresholdBestCost, double thresholdUniqueness);
+  void ApplyDepthThresholdFilter(double thresholdBestCost);
 
-private:
+protected:
+  // Functions
+  void ReadDepthMap(std::string path);
+  bool ReadKRTD(std::string path, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
+
+  // Attributes
   vtkImageData* depthMap;
   vtkMatrix3x3* matrixK;
   vtkMatrix4x4* matrix4K;

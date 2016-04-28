@@ -78,6 +78,8 @@ bool verbose = false; // Display debug information during execution
 std::vector<std::string> g_depthMapPathList; // Contains all depth map path
 std::vector<std::string> g_KRTPathList; // Contains all KRT matrix path
 std::vector<ReconstructionData*> g_dataList; // Contains all read depth map and matrix
+std::string g_globalKRTDFilePath;
+std::string g_globalVTIFilePath;
 vtkMatrix4x4* g_gridMatrix;
 
 //-----------------------------------------------------------------------------
@@ -93,7 +95,7 @@ void ShowInformation(std::string message);
 void ShowFilledParameters();
 
 
-//cudareconstruction.exe --gridDims 100 100 100 --gridSpacing 0.1 0.1 0.1 --gridOrigin -5 -5 -5 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C:\Dev\nda\TRG\Data --outputGridFilename C:\Dev\nda\TRG\Data\output.vts
+//cudareconstruction.exe --rayThick 0.08 --rayRho 0.8 --rayEta 0.03 --rayDelta 0.3 --threshBestCost 0.3 --gridDims 100 100 100 --gridSpacing 0.0348 0.0391 0.0342 --gridOrigin -2.29 -2.24 -2.2 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C:\Dev\nda\TRG\DataSonia2 --outputGridFilename C:\Dev\nda\TRG\DataSonia2\output.vts
 //-----------------------------------------------------------------------------
 /* Main function */
 int main(int argc, char ** argv)
@@ -107,13 +109,6 @@ int main(int argc, char ** argv)
 
   ShowFilledParameters();
 
-  // Read and create a list of ReconstructionData
-  if (!CreateReconstructionData())
-    {
-    std::cerr << "Error during ReconstructionData construction" << std::endl;
-    return EXIT_FAILURE;
-    }
-
   // Create grid matrix from VecXYZ
   CreateGridMatrixFromInput();
 
@@ -123,8 +118,10 @@ int main(int argc, char ** argv)
   grid->SetSpacing(&g_gridSpacing[0]);
   grid->SetOrigin(&g_gridOrigin[0]);
 
-  
   ShowInformation("** Launch reconstruction...");
+
+  std::string dmapGlobalFile = g_pathFolder + "\\" + g_depthMapContainer;
+  std::string krtGlobalFile = g_pathFolder + "\\" + g_KRTContainer;
 
   // Launch reconstruction process
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
@@ -132,12 +129,14 @@ int main(int argc, char ** argv)
     cudaReconstructionFilter->UseCudaOff();
   else
     cudaReconstructionFilter->UseCudaOn();
+  cudaReconstructionFilter->SetFilePathKRTD(krtGlobalFile.c_str());
+  cudaReconstructionFilter->SetFilePathVTI(dmapGlobalFile.c_str());
   cudaReconstructionFilter->SetRayPotentialRho(rayPotentialRho);
   cudaReconstructionFilter->SetRayPotentialThickness(rayPotentialThick);
   cudaReconstructionFilter->SetRayPotentialEta(rayPotentialEta);
   cudaReconstructionFilter->SetRayPotentialDelta(rayPotentialDelta);
+  cudaReconstructionFilter->SetThresholdBestCost(thresholdBestCost);
   cudaReconstructionFilter->SetInputData(grid.Get());
-  cudaReconstructionFilter->SetDataList(g_dataList);
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
   cudaReconstructionFilter->Update();
 
@@ -315,7 +314,7 @@ bool CreateReconstructionData()
     data->SetMatrixK(depthMapMatrixK);
     data->SetMatrixTR(depthMapMatrixTR);
     // Set depth to -1 if associated bestCost and Uniqueness are superior to threshold
-    data->ApplyDepthThresholdFilter(thresholdBestCost, thresholdUniqueness);
+    data->ApplyDepthThresholdFilter(thresholdBestCost);
 
     g_dataList.push_back(data);
     }
