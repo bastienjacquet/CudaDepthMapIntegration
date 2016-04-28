@@ -1,7 +1,11 @@
 #include <vector>
 #include <sstream>
-#include <vtksys/SystemTools.hxx>
 #include <string>
+
+// VTK includes
+#include <vtksys/SystemTools.hxx>
+#include "vtkMatrix3x3.h"
+#include "vtkMatrix4x4.h"
 
 namespace help
 {
