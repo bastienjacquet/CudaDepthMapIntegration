@@ -87,7 +87,6 @@ vtkMatrix4x4* g_gridMatrix;
 //-----------------------------------------------------------------------------
 bool ReadArguments(int argc, char ** argv);
 bool AreVectorsOrthogonal();
-bool CreateReconstructionData();
 bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
 void CreateGridMatrixFromInput();
 std::vector<std::string> &SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
@@ -242,96 +241,6 @@ bool AreVectorsOrthogonal()
   return false;
 }
 
-//-----------------------------------------------------------------------------
-/* Read all depth map and matrix file to create a list of 'ReconstructionData'
-required to launch the process
-*/
-bool CreateReconstructionData()
-{
-  ShowInformation("** Read depth map and matrix files...");
-  clock_t start = clock();
-
-  std::string dmapGlobalFile = g_pathFolder + "\\" + g_depthMapContainer;
-  std::string krtGlobalFile = g_pathFolder + "\\" + g_KRTContainer;
-
-  // Open the files which contains depthMap and matrix files path
-  std::ifstream depthMapContainer(dmapGlobalFile.c_str());
-  std::ifstream matrixContainer(krtGlobalFile.c_str());
-  if (!depthMapContainer.is_open() || !matrixContainer.is_open())
-  {
-    std::cerr << "Unable to open file which contains depth map or matrix path." << std::endl;
-    return false;
-  }
-
-  g_dataList.clear();
-
-  std::string depthMapPath, matrixPath;
-  while (!depthMapContainer.eof())
-    {
-    // ----------------
-    // DEPTH MAP
-    // ----------------
-    std::getline(depthMapContainer, depthMapPath);
-    // only get the file name, not the whole path
-    std::vector <std::string> elems;
-    SplitString(depthMapPath, '/', elems);
-
-    // check if there are an empty line
-    if (elems.size() == 0)
-      {
-      continue;
-      }
-    // Create the real data path to access depth map file
-    depthMapPath = g_pathFolder + "\\" + elems[elems.size() - 1];
-
-    // Read depth map file
-    vtkXMLImageDataReader* depthMapReader = vtkXMLImageDataReader::New();
-    depthMapReader->SetFileName(depthMapPath.c_str());
-    depthMapReader->Update();
-
-    // ----------------
-    // MATRIX
-    // ----------------
-    std::getline(matrixContainer, matrixPath);
-    // Only get the file name, not the whole path
-    elems.clear();
-    SplitString(matrixPath, '/', elems);
-    matrixPath = g_pathFolder + "\\" + elems[elems.size() - 1];
-
-    vtkMatrix3x3* depthMapMatrixK = vtkMatrix3x3::New();
-    vtkMatrix4x4* depthMapMatrixTR = vtkMatrix4x4::New();
-    bool isReadOk = ReadKrtdFile(matrixPath, depthMapMatrixK, depthMapMatrixTR);
-    // Skip the creation of a new data if matrix is not readable
-    if (!isReadOk)
-      {
-      continue;
-      }
-
-    // ----------------
-    // CREATE DATA
-    // ----------------
-    ReconstructionData* data = new ReconstructionData();
-    data->SetDepthMap(depthMapReader->GetOutput());
-    data->SetMatrixK(depthMapMatrixK);
-    data->SetMatrixTR(depthMapMatrixTR);
-    // Set depth to -1 if associated bestCost and Uniqueness are superior to threshold
-    data->ApplyDepthThresholdFilter(thresholdBestCost);
-
-    g_dataList.push_back(data);
-    }
-
-  // If there is no enough data, don't launch process
-  if (g_dataList.size() == 0)
-    return false;
-
-  double time = (clock() - start) / CLOCKS_PER_SEC;
-
-  std::string info = std::to_string(g_dataList.size()) + " depth map have been loaded.\n";
-  info += "Reading time : " + std::to_string(time) + " s\n";
-  ShowInformation(info);
-
-  return true;
-}
 
 //-----------------------------------------------------------------------------
 /* Read .krtd file which contains 2 matrix */
