@@ -56,7 +56,6 @@ public:
 protected:
   // Functions
   void ReadDepthMap(std::string path);
-  bool ReadKRTD(std::string path, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
 
   // Attributes
   vtkImageData* depthMap;

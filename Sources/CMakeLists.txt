@@ -1,6 +1,7 @@
 set(Reconstruction_SRCS
   ReconstructionData.h
   ReconstructionData.cxx
+  Helper.h
 )
 
 include( ${VTK_USE_FILE} )

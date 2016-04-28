@@ -118,13 +118,6 @@ protected:
 
   void RayPotential(double realDistance, double depthMapDistance, double& val);
 
-  // Description :
-  // Read input file and extract all path of file name
-  static std::vector<std::string> ExtractAllFilePath(const char* globalPath);
-
-  // Description :
-  // Split a string from a delimiter char and return a vector of extracted words
-  static void SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
 
   // Description :
   // Read .krtd file which contains 2 matrix

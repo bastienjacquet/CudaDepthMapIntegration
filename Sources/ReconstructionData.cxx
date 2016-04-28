@@ -34,6 +34,8 @@
 #include "vtkPointData.h"
 #include "vtkXMLImageDataReader.h"
 
+#include "Helper.h"
+
 #include <sstream>
 
 ReconstructionData::ReconstructionData()
@@ -52,7 +54,7 @@ ReconstructionData::ReconstructionData(std::string depthPath,
   // Read KRTD FILE
   vtkMatrix3x3* K = vtkMatrix3x3::New();
   this->matrixTR = vtkMatrix4x4::New();
-  this->ReadKRTD(matrixPath, K, this->matrixTR);
+  help::ReadKrtdFile(matrixPath, K, this->matrixTR);
   // Set matrix K to  create matrix4x4 for K
   this->SetMatrixK(K);
 
@@ -150,69 +152,4 @@ void ReconstructionData::ReadDepthMap(std::string path)
   depthMapReader->Update();
   this->depthMap = depthMapReader->GetOutput();
 
-}
-
-bool ReconstructionData::ReadKRTD(std::string path, vtkMatrix3x3* matrixK,
-                                  vtkMatrix4x4* matrixTR)
-{
-  // Open the file
-  std::ifstream file(path.c_str());
-  if (!file.is_open())
-  {
-    std::cerr << "Unable to open krtd file : " << path << std::endl;
-    return false;
-  }
-
-  std::string line;
-
-  // Get matrix K
-  for (int i = 0; i < 3; i++)
-  {
-    getline(file, line);
-    std::istringstream iss(line);
-
-    for (int j = 0; j < 3; j++)
-    {
-      double value;
-      iss >> value;
-      matrixK->SetElement(i, j, value);
-    }
-  }
-
-  getline(file, line);
-
-  // Get matrix R
-  for (int i = 0; i < 3; i++)
-  {
-    getline(file, line);
-    std::istringstream iss(line);
-
-    for (int j = 0; j < 3; j++)
-    {
-      double value;
-      iss >> value;
-      matrixTR->SetElement(i, j, value);
-    }
-  }
-
-  getline(file, line);
-
-  // Get matrix T
-  getline(file, line);
-  std::istringstream iss(line);
-  for (int i = 0; i < 3; i++)
-  {
-    double value;
-    iss >> value;
-    matrixTR->SetElement(i, 3, value);
-  }
-
-  // Finalize matrix TR
-  for (int j = 0; j < 4; j++)
-  {
-    matrixTR->SetElement(3, j, 0);
-  }
-  matrixTR->SetElement(3, 3, 1);
-
-  return true;
 }
