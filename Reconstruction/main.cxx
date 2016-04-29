@@ -64,9 +64,9 @@ std::string g_pathFolder; // Path to the folder which contains all data
 std::string g_depthMapContainer = "vtiList.txt"; // File which contains all path of depth map
 std::string g_KRTContainer = "kList.txt"; // File which contains all path of KRT matrix ofr each depth map
 double rayPotentialThick = 2; // Define parameter 'thick' on ray potential function when cuda is using
-double rayPotentialRho = 3; // Define parameter 'rho' on ray potential function when cuda is using
-double rayPotentialEta = 1;
-double rayPotentialDelta = 1;
+double rayPotentialRho = 0.8; // Define parameter 'rho' on ray potential function when cuda is using
+double rayPotentialEta = 0.03;
+double rayPotentialDelta = 0.3;
 double thresholdBestCost = 0;
 double thresholdUniqueness = 0;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
