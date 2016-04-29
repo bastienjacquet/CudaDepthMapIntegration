@@ -90,10 +90,7 @@ int main(int argc, char ** argv)
   std::vector<ReconstructionData*> dataList;
   for (int id = 0; id < nbDepthMap; id++)
     {
-    if (id % (nbDepthMap / 10) == 0)
-      {
-      std::cout << "\r" << id * 100 / nbDepthMap << " %" << std::flush;
-      }
+    std::cout << "\r" << id * 100 / nbDepthMap << " %" << std::flush;
     ReconstructionData* data = new ReconstructionData(vtiList[id], krtdList[id]);
     dataList.push_back(data);
     }
@@ -127,10 +124,8 @@ int main(int argc, char ** argv)
 
   for (vtkIdType id = 0; id < nbMeshPoint; id++)
     {
-    if (id % (nbMeshPoint/100) == 0)
-      {
-      std::cout << "\r" << id * 100 / nbMeshPoint << " %" << std::flush;
-      }
+    std::cout << "\r" << id * 100 / nbMeshPoint << " %" << std::flush;
+
     // Get mesh position from id
     double position[3];
     meshPointList->GetPoint(id, position);
