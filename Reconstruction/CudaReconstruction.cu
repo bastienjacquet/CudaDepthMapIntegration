@@ -341,8 +341,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
 
   for (int i = 0; i < nbDepthMap; i++)
     {
-    if (i%3 == 0)
-      std::cout << (100 * i) / nbDepthMap << " %" << std::endl;
+    std::cout << "\r" << (100 * i) / nbDepthMap << " %" << std::flush;
 
     ReconstructionData data(vtiList[i], krtdList[i]);
     data.ApplyDepthThresholdFilter(thresholdBestCost);
@@ -362,13 +361,13 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
     CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, Mat4x4 * sizeof(TCompute), cudaMemcpyHostToDevice));
     CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, Mat4x4 * sizeof(TCompute), cudaMemcpyHostToDevice));
 
+
+    // run code into device
+    depthMapKernel<TVolumetric> << < dimGrid, dimBlock >> >(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
     // clean memory
     delete(h_depthMap);
     delete(h_matrixK);
     delete(h_matrixRT);
-
-    // run code into device
-    depthMapKernel<TVolumetric> << < dimGrid, dimBlock >> >(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
     }
 
   // Transfer data from device to host
@@ -384,7 +383,8 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   cudaFree(d_matrixK);
   cudaFree(d_matrixRT);
 
-  std::cout << "END CUDA : 100%" << std::endl;
+  std::cout << "\r" << "100 %" << std::flush << std::endl << std::endl;
+
   return true;
 }
 
