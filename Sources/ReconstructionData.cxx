@@ -31,6 +31,7 @@
 
 // VTK includes
 #include "vtkDoubleArray.h"
+#include "vtkUnsignedCharArray.h"
 #include "vtkPointData.h"
 #include "vtkXMLImageDataReader.h"
 
@@ -50,6 +51,7 @@ ReconstructionData::ReconstructionData(std::string depthPath,
 {
   // Read DEPTH MAP an fill this->depthMap
   this->ReadDepthMap(depthPath);
+  this->depthDims = this->depthMap->GetDimensions();
 
   // Read KRTD FILE
   vtkMatrix3x3* K = vtkMatrix3x3::New();
@@ -68,6 +70,35 @@ ReconstructionData::~ReconstructionData()
     this->matrixK->Delete();
   if (this->matrixTR)
     this->matrixTR->Delete();
+}
+
+int* ReconstructionData::GetDepthMapDimensions()
+{
+  return this->depthDims;
+}
+
+void ReconstructionData::GetColorValue(int* pixelPosition, double rgb[3])
+{
+  vtkUnsignedCharArray* color =
+    vtkUnsignedCharArray::SafeDownCast(this->depthMap->GetPointData()->GetArray("Color"));
+
+  if (color == nullptr)
+    {
+    std::cerr << "Error, no 'Color' array exists" << std::endl;
+    return;
+    }
+
+  int pix[3];
+  pix[0] = pixelPosition[0];
+  pix[1] = this->depthDims[1] - 1 - pixelPosition[1];
+  pix[2] = 0;
+
+  int id = this->depthMap->ComputePointId(pix);
+  double* temp = color->GetTuple(id);
+  for (size_t i = 0; i < 3; i++)
+  {
+    rgb[i] = temp[i];
+  }
 }
 
 vtkImageData* ReconstructionData::GetDepthMap()

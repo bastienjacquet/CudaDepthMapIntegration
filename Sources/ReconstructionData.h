@@ -42,6 +42,9 @@ public:
   ReconstructionData(std::string depthPath, std::string matrixPath);
   ~ReconstructionData();
 
+  int* GetDepthMapDimensions();
+  void GetColorValue(int* pixelPosition, double rgb[3]);
+
   vtkImageData* GetDepthMap();
   vtkMatrix3x3* Get3MatrixK();
   vtkMatrix4x4* Get4MatrixK();
@@ -62,6 +65,7 @@ protected:
   vtkMatrix3x3* matrixK;
   vtkMatrix4x4* matrix4K;
   vtkMatrix4x4* matrixTR;
+  int* depthDims;
 };
 
 #endif

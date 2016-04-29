@@ -27,18 +27,30 @@
 // LIABILITY, OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 // OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// VTK includes
 #include <vtksys/CommandLineArguments.hxx>
 #include <vtksys/SystemTools.hxx>
+#include "vtkDoubleArray.h"
+#include "vtkNew.h"
+#include "vtkPointData.h"
+#include "vtkPolyData.h"
+#include "vtkXMLPolyDataReader.h"
+#include "vtkXMLPolyDataWriter.h"
 
+#include "Helper.h"
 #include "ReconstructionData.h"
 
+#include <iostream>
 #include <string>
 
 //-----------------------------------------------------------------------------
 // READ ARGUMENTS
 //-----------------------------------------------------------------------------
-
-bool verbose = true;
+std::string g_inputPath = "";
+std::string g_outputPath = "";
+std::string g_globalKRTDFilePath = "";
+std::string g_globalVTIFilePath = "";
+bool verbose = false;
 
 //-----------------------------------------------------------------------------
 // FUNCTIONS
@@ -57,6 +69,125 @@ int main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
 
+  ShowInformation("** Read input...");
+  vtkNew<vtkXMLPolyDataReader> reader;
+  reader->SetFileName(g_inputPath.c_str());
+  reader->Update();
+
+
+  ShowInformation("** Extract vti and krtd file path...");
+  std::vector<std::string> vtiList = help::ExtractAllFilePath(g_globalVTIFilePath.c_str());
+  std::vector<std::string> krtdList = help::ExtractAllFilePath(g_globalKRTDFilePath.c_str());
+  if (krtdList.size() < vtiList.size())
+    {
+    std::cerr << "Error, no enough krtd file for each vti file" << std::endl;
+    return EXIT_FAILURE;
+    }
+
+  int nbDepthMap = (int)vtiList.size();
+
+  ShowInformation("** Read krtd and vti...");
+  std::vector<ReconstructionData*> dataList;
+  for (int id = 0; id < nbDepthMap; id++)
+    {
+    if (id % (nbDepthMap / 10) == 0)
+      {
+      std::cout << "\r" << id * 100 / nbDepthMap << " %" << std::flush;
+      }
+    ReconstructionData* data = new ReconstructionData(vtiList[id], krtdList[id]);
+    dataList.push_back(data);
+    }
+
+  std::cout << "\r" << "100 %" << std::flush << std::endl << std::endl;
+  ShowInformation("** Process coloration...");
+  vtkPolyData* mesh = reader->GetOutput();
+  vtkPoints* meshPointList = mesh->GetPoints();
+  vtkIdType nbMeshPoint = meshPointList->GetNumberOfPoints();
+  //vtkIdType nbMeshPoint = 3;
+  int* depthMapDimensions = dataList[0]->GetDepthMapDimensions();
+
+  std::vector<int> pointCount(nbMeshPoint);
+  // Contains rgb values
+  vtkUnsignedCharArray* meanValues = vtkUnsignedCharArray::New();
+  meanValues->SetNumberOfComponents(3);
+  meanValues->SetNumberOfTuples(nbMeshPoint);
+  meanValues->FillComponent(0, 0);
+  meanValues->FillComponent(1, 0);
+  meanValues->FillComponent(2, 0);
+  meanValues->SetName("meanColoration");
+
+  vtkUnsignedCharArray* medianValues = vtkUnsignedCharArray::New();
+  medianValues->SetNumberOfComponents(3);
+  medianValues->SetNumberOfTuples(nbMeshPoint);
+  medianValues->FillComponent(0, 0);
+  medianValues->FillComponent(1, 0);
+  medianValues->FillComponent(2, 0);
+  medianValues->SetName("medianColoration");
+
+
+  for (vtkIdType id = 0; id < nbMeshPoint; id++)
+    {
+    if (id % (nbMeshPoint/100) == 0)
+      {
+      std::cout << "\r" << id * 100 / nbMeshPoint << " %" << std::flush;
+      }
+    // Get mesh position from id
+    double position[3];
+    meshPointList->GetPoint(id, position);
+
+    double sum0 = 0, sum1 = 0, sum2 = 0;
+    std::vector<double> list0(nbDepthMap);
+    std::vector<double> list1(nbDepthMap);
+    std::vector<double> list2(nbDepthMap);
+    int cpt = 0;
+    for (int idData = 0; idData < nbDepthMap; idData++)
+      {
+      ReconstructionData* data = dataList[idData];
+
+      // Transform to pixel index
+      int pixelPosition[2];
+      help::WorldToDepthMap(data->GetMatrixTR(), data->Get4MatrixK(), position, pixelPosition);
+      // Test if pixel is inside depth map
+      if (pixelPosition[0] < 0 || pixelPosition[1] < 0 ||
+        pixelPosition[0] >= depthMapDimensions[0] ||
+        pixelPosition[1] >= depthMapDimensions[1])
+        {
+        continue;
+        }
+
+      double color[3];
+      data->GetColorValue(pixelPosition, color);
+
+      cpt++;
+      sum0 += color[0];
+      sum1 += color[1];
+      sum2 += color[2];
+      list0[idData] = color[0];
+      list1[idData] = color[1];
+      list2[idData] = color[2];
+      }
+
+    if (cpt != 0)
+      {
+      meanValues->SetTuple3(id, sum0 / (double)cpt, sum1 / (double)cpt, sum2 / (double)cpt);
+      double median0, median1, median2;
+      help::ComputeMedian<double>(list0, median0);
+      help::ComputeMedian<double>(list1, median1);
+      help::ComputeMedian<double>(list2, median2);
+      medianValues->SetTuple3(id, median0, median1, median2);
+      }
+    }
+
+  mesh->GetPointData()->AddArray(meanValues);
+  mesh->GetPointData()->AddArray(medianValues);
+
+  std::cout << "\r" << "100 %" << std::flush << std::endl << std::endl;
+  ShowInformation("** Write output image");
+  vtkNew<vtkXMLPolyDataWriter> writer;
+  writer->SetFileName(g_outputPath.c_str());
+  writer->SetInputData(mesh);
+  writer->Update();
+
   return EXIT_SUCCESS;
 }
 
@@ -70,6 +201,27 @@ bool ReadArguments(int argc, char ** argv)
   arg.Initialize(argc, argv);
   typedef vtksys::CommandLineArguments argT;
 
+  arg.AddArgument("--input", argT::SPACE_ARGUMENT, &g_inputPath, "(required) Path to a .vtp file");
+  arg.AddArgument("--output", argT::SPACE_ARGUMENT, &g_outputPath, "(required) Path of the output file (.vtp)");
+  arg.AddArgument("--krtd", argT::SPACE_ARGUMENT, &g_globalKRTDFilePath, "(required) Path to the file which contains all krtd path");
+  arg.AddArgument("--vti", argT::SPACE_ARGUMENT, &g_globalVTIFilePath, "(required) Path to the file which contains all vti path");
+  arg.AddBooleanArgument("--verbose", &verbose, "(optional) Use to display debug information");
+  arg.AddBooleanArgument("--help", &help, "Print help message");
+
+  int result = arg.Parse();
+  if (!result || help)
+    {
+    std::cerr << arg.GetHelp();
+    return false;
+    }
+
+  // Check arguments
+  if (g_inputPath == "" || g_outputPath == "" || g_globalKRTDFilePath == "" || g_globalVTIFilePath == "")
+    {
+    std::cerr << "Missing arguments..." << std::endl;
+    std::cerr << arg.GetHelp();
+    return false;
+    }
 
   return true;
 }

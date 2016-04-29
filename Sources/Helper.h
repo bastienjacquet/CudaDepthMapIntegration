@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <vector>
 #include <sstream>
 #include <string>
@@ -6,13 +7,16 @@
 #include <vtksys/SystemTools.hxx>
 #include "vtkMatrix3x3.h"
 #include "vtkMatrix4x4.h"
+#include "vtkNew.h"
+#include "vtkTransform.h"
 
 namespace help
 {
   //----------------------------------------------------------------------------
   // Description
   // Split string by separated char
-  static void SplitString(const std::string &s, char delim, std::vector<std::string> &elems)
+  static void SplitString(const std::string &s, char delim,
+                          std::vector<std::string> &elems)
   {
     std::stringstream ss(s);
     std::string item;
@@ -67,6 +71,8 @@ namespace help
   }
 
   //----------------------------------------------------------------------------
+  // Description
+  // Read krtd file and create K and RT matrix
   static bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK,
                            vtkMatrix4x4* matrixTR)
   {
@@ -132,4 +138,44 @@ namespace help
     return true;
   }
 
+  //----------------------------------------------------------------------------
+  // Description
+  // Transform world points into pixel position using KRTD matrix
+  static void WorldToDepthMap(vtkMatrix4x4* matrixRT, vtkMatrix4x4* matrixK,
+                              double* worldCoordinate, int pixelCoordinate[2])
+  {
+    vtkNew<vtkTransform> transformWorldToCamera;
+    transformWorldToCamera->SetMatrix(matrixRT);
+    vtkNew<vtkTransform> transformCameraToDepthMap;
+    transformCameraToDepthMap->SetMatrix(matrixK);
+
+    double cameraCoordinate[3];
+    transformWorldToCamera->TransformPoint(worldCoordinate, cameraCoordinate);
+    double depthMapCoordinate[3];
+    transformCameraToDepthMap->TransformVector(cameraCoordinate, depthMapCoordinate);
+
+    depthMapCoordinate[0] = depthMapCoordinate[0] / depthMapCoordinate[2];
+    depthMapCoordinate[1] = depthMapCoordinate[1] / depthMapCoordinate[2];
+
+    pixelCoordinate[0] = std::round(depthMapCoordinate[0]);
+    pixelCoordinate[1] = std::round(depthMapCoordinate[1]);
+  }
+
+  //----------------------------------------------------------------------------
+  // Description
+  // Compute median of a vector
+  template <typename T>
+  static void ComputeMedian(std::vector<T> vector, double& median)
+  {
+    std::sort(vector.begin(), vector.end());
+    size_t middleIndex = vector.size() / 2;
+    if (vector.size() % 2 == 0)
+      {
+      median = (vector[middleIndex] + vector[middleIndex - 1]) / 2;
+      }
+    else
+      {
+      median = vector[middleIndex];
+      }
+  }
 }
