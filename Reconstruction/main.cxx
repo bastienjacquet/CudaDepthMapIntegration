@@ -221,6 +221,27 @@ bool ReadArguments(int argc, char ** argv)
     return false;
     }
 
+  if (g_gridVecX.size() == 0)
+  {
+    g_gridVecX.push_back(1);
+    g_gridVecX.push_back(0);
+    g_gridVecX.push_back(0);
+  }
+
+  if (g_gridVecY.size() == 0)
+  {
+    g_gridVecY.push_back(0);
+    g_gridVecY.push_back(1);
+    g_gridVecY.push_back(0);
+  }
+
+  if (g_gridVecZ.size() == 0)
+  {
+    g_gridVecZ.push_back(0);
+    g_gridVecZ.push_back(0);
+    g_gridVecZ.push_back(1);
+  }
+
   return true;
 }
 
