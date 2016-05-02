@@ -82,6 +82,8 @@ std::vector<ReconstructionData*> g_dataList; // Contains all read depth map and 
 std::string g_globalKRTDFilePath;
 std::string g_globalVTIFilePath;
 vtkMatrix4x4* g_gridMatrix;
+double g_reconstructionExecutionTime;
+double g_totalExecutionTime;
 
 //-----------------------------------------------------------------------------
 // FUNCTIONS
@@ -92,6 +94,7 @@ void CreateGridMatrixFromInput();
 std::vector<std::string> &SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
 void ShowInformation(std::string message);
 void ShowFilledParameters();
+void WriteSummaryFile(std::string path, int argc, char** argv);
 
 
 //cudareconstruction.exe --rayThick 0.08 --rayRho 0.8 --rayEta 0.03 --rayDelta 0.3 --threshBestCost 0.3 --gridDims 100 100 100 --gridSpacing 0.0348 0.0391 0.0342 --gridOrigin -2.29 -2.24 -2.2 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C:\Dev\nda\TRG\DataSonia2 --outputGridFilename C:\Dev\nda\TRG\DataSonia2\output.vts
@@ -99,6 +102,7 @@ void ShowFilledParameters();
 /* Main function */
 int main(int argc, char ** argv)
 {
+  clock_t start = clock();
   if (!ReadArguments(argc, argv))
     {
     return EXIT_FAILURE;
@@ -139,8 +143,8 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
   cudaReconstructionFilter->Update();
 
-  double time = cudaReconstructionFilter->GetExecutionTime();
-  std::string message = "Execution time : " + std::to_string(time) + " s";
+  g_reconstructionExecutionTime = cudaReconstructionFilter->GetExecutionTime();
+  std::string message = "Reconstruction execution time : " + std::to_string(g_reconstructionExecutionTime) + " s";
   ShowInformation(message);
 
   ShowInformation("** Apply grid matrix to the reconstruction output...");
@@ -156,11 +160,11 @@ int main(int argc, char ** argv)
   ShowInformation("** Save output...");
   ShowInformation("Output path : " + g_outputGridFilename);
 
+  g_totalExecutionTime = (double)(clock() - start) / CLOCKS_PER_SEC;
   if (writeSummaryFile)
     {
     ShowInformation("** Save summary file...");
     std::string filePath = g_pathFolder + "\\summary.txt";
-    std::cout << filePath << std::endl;
     WriteSummaryFile(filePath, argc, argv);
     }
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
@@ -401,6 +405,11 @@ void WriteSummaryFile(std::string path, int argc, char** argv)
   output << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
   output << "--- Use cuda :                " << !noCuda << std::endl;
   output << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** TIME :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Reconstruction : " << g_reconstructionExecutionTime << " s" << std::endl;
+  output << "--- Total :          " << g_totalExecutionTime << " s" << std::endl;
   output << std::endl;
 
   output << file;
