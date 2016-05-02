@@ -71,6 +71,7 @@ double thresholdBestCost = 0;
 double thresholdUniqueness = 0;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
+bool writeSummaryFile = false; // Define if a file with all parameters will be write at the end of execution
 
 //-----------------------------------------------------------------------------
 // FILLED ATTRIBUTES
@@ -155,6 +156,13 @@ int main(int argc, char ** argv)
   ShowInformation("** Save output...");
   ShowInformation("Output path : " + g_outputGridFilename);
 
+  if (writeSummaryFile)
+    {
+    ShowInformation("** Save summary file...");
+    std::string filePath = g_pathFolder + "\\summary.txt";
+    std::cout << filePath << std::endl;
+    WriteSummaryFile(filePath, argc, argv);
+    }
   vtkNew<vtkXMLStructuredGridWriter> gridWriter;
   gridWriter->SetFileName(g_outputGridFilename.c_str());
   gridWriter->SetInputData(outputGrid);
@@ -197,6 +205,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--threshUniqueness", argT::SPACE_ARGUMENT, &thresholdUniqueness, "Define threshold that will be applied on depth map");
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
+  arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
 
   int result = arg.Parse();
@@ -344,4 +353,56 @@ void ShowFilledParameters()
   std::cout << "--- Use cuda :                " << !noCuda << std::endl;
   std::cout << std::endl;
   std::cout << std::endl;
+}
+//-----------------------------------------------------------------------------
+/* Write a file with all parameters and command line */
+void WriteSummaryFile(std::string path, int argc, char** argv)
+{
+  std::ofstream output(path.c_str());
+  std::string file = "";
+
+  output << "----------------------" << std::endl;
+  output << "** COMMAND LINE :" << std::endl;
+  output << "----------------------" << std::endl;
+  for (int i = 0; i < argc; i++)
+  {
+    output << argv[i] << " ";
+  }
+
+  output << std::endl << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** OUTPUT GRID :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Output file path : " << g_outputGridFilename << std::endl;
+  output << "--- Dimensions : ( " << g_gridDims[0] << ", " << g_gridDims[1] << ", " << g_gridDims[2] << " )" << std::endl;
+  output << "--- Spacing    : ( " << g_gridSpacing[0] << ", " << g_gridSpacing[1] << ", " << g_gridSpacing[2] << " )" << std::endl;
+  output << "--- Origin     : ( " << g_gridOrigin[0] << ", " << g_gridOrigin[1] << ", " << g_gridOrigin[2] << " )" << std::endl;
+  output << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
+  output << "--- Real volume size : ( " << g_gridDims[0] * g_gridSpacing[0] << ", " << g_gridDims[1] * g_gridSpacing[1] << ", " << g_gridDims[2] * g_gridSpacing[2] << ")" << std::endl;
+  output << "--- Matrix :" << std::endl;
+  std::string l1 = "  " + std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
+  std::string l2 = "  " + std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
+  std::string l3 = "  " + std::to_string(g_gridVecX[2]) + "  " + std::to_string(g_gridVecY[2]) + "  " + std::to_string(g_gridVecZ[2]) + "\n";
+  output << l1 << std::endl;
+  output << l2 << std::endl;
+  output << l3 << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** DEPTH MAP :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Threshold for BestCost  : " << std::to_string(thresholdBestCost) << std::endl;
+  output << "--- Threshold for Uniqueness : " << std::to_string(thresholdUniqueness) << std::endl;
+  output << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** CUDA :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Thickness ray potential : " << rayPotentialThick << std::endl;
+  output << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
+  output << "--- Eta ray potential :       " << rayPotentialEta << std::endl;
+  output << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
+  output << "--- Use cuda :                " << !noCuda << std::endl;
+  output << std::endl;
+  output << std::endl;
+
+  output << file;
+  output.close();
 }
