@@ -97,12 +97,14 @@ int main(int argc, char ** argv)
     }
 
   std::cout << "\r" << "100 %" << std::flush << std::endl << std::endl;
-  ShowInformation("** Process coloration...");
   vtkPolyData* mesh = reader->GetOutput();
   vtkPoints* meshPointList = mesh->GetPoints();
   vtkIdType nbMeshPoint = meshPointList->GetNumberOfPoints();
   //vtkIdType nbMeshPoint = 3;
   int* depthMapDimensions = dataList[0]->GetDepthMapDimensions();
+
+  ShowInformation("** Process coloration for " + std::to_string(nbMeshPoint) + " points ...");
+
 
   std::vector<int> pointCount(nbMeshPoint);
   // Contains rgb values
