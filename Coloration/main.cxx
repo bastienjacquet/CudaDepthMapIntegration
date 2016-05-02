@@ -114,7 +114,7 @@ int main(int argc, char ** argv)
   meanValues->FillComponent(0, 0);
   meanValues->FillComponent(1, 0);
   meanValues->FillComponent(2, 0);
-  meanValues->SetName("meanColoration");
+  meanValues->SetName("MeanColoration");
 
   vtkUnsignedCharArray* medianValues = vtkUnsignedCharArray::New();
   medianValues->SetNumberOfComponents(3);
@@ -122,7 +122,7 @@ int main(int argc, char ** argv)
   medianValues->FillComponent(0, 0);
   medianValues->FillComponent(1, 0);
   medianValues->FillComponent(2, 0);
-  medianValues->SetName("medianColoration");
+  medianValues->SetName("MedianColoration");
 
   vtkDoubleArray* projectedDMValue = vtkDoubleArray::New();
   projectedDMValue->SetNumberOfComponents(1);
