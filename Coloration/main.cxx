@@ -122,6 +122,12 @@ int main(int argc, char ** argv)
   medianValues->FillComponent(2, 0);
   medianValues->SetName("medianColoration");
 
+  vtkDoubleArray* projectedDMValue = vtkDoubleArray::New();
+  projectedDMValue->SetNumberOfComponents(1);
+  projectedDMValue->SetNumberOfTuples(nbMeshPoint);
+  projectedDMValue->FillComponent(0, 0);
+  projectedDMValue->SetName("NbProjectedDepthMap");
+
   // Store each rgb value for each depth map
   std::vector<double> list0;
   std::vector<double> list1;
@@ -175,6 +181,7 @@ int main(int argc, char ** argv)
       help::ComputeMedian<double>(list1, median1);
       help::ComputeMedian<double>(list2, median2);
       medianValues->SetTuple3(id, median0, median1, median2);
+      projectedDMValue->SetTuple1(id, list0.size());
       }
 
     list0.clear();
@@ -184,6 +191,7 @@ int main(int argc, char ** argv)
 
   mesh->GetPointData()->AddArray(meanValues);
   mesh->GetPointData()->AddArray(medianValues);
+  mesh->GetPointData()->AddArray(projectedDMValue);
 
   std::cout << "\r" << "100 %" << std::flush << std::endl << std::endl;
   ShowInformation("** Write output image");
