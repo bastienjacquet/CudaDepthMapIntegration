@@ -87,7 +87,6 @@ vtkMatrix4x4* g_gridMatrix;
 //-----------------------------------------------------------------------------
 bool ReadArguments(int argc, char ** argv);
 bool AreVectorsOrthogonal();
-bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
 void CreateGridMatrixFromInput();
 std::vector<std::string> &SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
 void ShowInformation(std::string message);
@@ -215,12 +214,6 @@ bool ReadArguments(int argc, char ** argv)
     return false;
     }
 
-  if (!AreVectorsOrthogonal())
-    {
-    std::cerr << "Given vectors are not orthogonals" << std::endl;
-    return false;
-    }
-
   if (g_gridVecX.size() == 0)
   {
     g_gridVecX.push_back(1);
@@ -242,6 +235,13 @@ bool ReadArguments(int argc, char ** argv)
     g_gridVecZ.push_back(1);
   }
 
+
+  if (!AreVectorsOrthogonal())
+    {
+    std::cerr << "Given vectors are not orthogonals" << std::endl;
+    return false;
+    }
+
   return true;
 }
 
@@ -260,73 +260,6 @@ bool AreVectorsOrthogonal()
   if (XY == 0 && YZ == 0 && ZX == 0)
     return true;
   return false;
-}
-
-
-//-----------------------------------------------------------------------------
-/* Read .krtd file which contains 2 matrix */
-bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR)
-{
-  // Open the file
-  std::ifstream file(filename.c_str());
-  if (!file.is_open())
-    {
-    std::cerr << "Unable to open krtd file : " << filename << std::endl;
-    return false;
-    }
-
-  std::string line;
-
-  // Get matrix K
-  for (int i = 0; i < 3; i++)
-  {
-    getline(file, line);
-    std::istringstream iss(line);
-
-    for (int j = 0; j < 3; j++)
-    {
-      double value;
-      iss >> value;
-      matrixK->SetElement(i, j, value);
-    }
-  }
-
-  getline(file, line);
-
-  // Get matrix R
-  for (int i = 0; i < 3; i++)
-  {
-    getline(file, line);
-    std::istringstream iss(line);
-
-    for (int j = 0; j < 3; j++)
-    {
-      double value;
-      iss >> value;
-      matrixTR->SetElement(i, j, value);
-    }
-  }
-
-  getline(file, line);
-
-  // Get matrix T
-  getline(file, line);
-  std::istringstream iss(line);
-  for (int i = 0; i < 3; i++)
-  {
-    double value;
-    iss >> value;
-    matrixTR->SetElement(i, 3, value);
-  }
-
-  // Finalize matrix TR
-  for (int j = 0; j < 4; j++)
-  {
-    matrixTR->SetElement(3, j, 0);
-  }
-  matrixTR->SetElement(3, 3, 1);
-
-  return true;
 }
 
 //-----------------------------------------------------------------------------
