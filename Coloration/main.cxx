@@ -42,6 +42,7 @@
 
 #include <iostream>
 #include <string>
+#include <numeric>
 
 //-----------------------------------------------------------------------------
 // READ ARGUMENTS
@@ -121,20 +122,23 @@ int main(int argc, char ** argv)
   medianValues->FillComponent(2, 0);
   medianValues->SetName("medianColoration");
 
+  // Store each rgb value for each depth map
+  std::vector<double> list0;
+  std::vector<double> list1;
+  std::vector<double> list2;
 
   for (vtkIdType id = 0; id < nbMeshPoint; id++)
     {
     std::cout << "\r" << id * 100 / nbMeshPoint << " %" << std::flush;
 
+    list0.reserve(nbDepthMap);
+    list1.reserve(nbDepthMap);
+    list2.reserve(nbDepthMap);
+
     // Get mesh position from id
     double position[3];
     meshPointList->GetPoint(id, position);
 
-    double sum0 = 0, sum1 = 0, sum2 = 0;
-    std::vector<double> list0(nbDepthMap);
-    std::vector<double> list1(nbDepthMap);
-    std::vector<double> list2(nbDepthMap);
-    int cpt = 0;
     for (int idData = 0; idData < nbDepthMap; idData++)
       {
       ReconstructionData* data = dataList[idData];
@@ -153,24 +157,29 @@ int main(int argc, char ** argv)
       double color[3];
       data->GetColorValue(pixelPosition, color);
 
-      cpt++;
-      sum0 += color[0];
-      sum1 += color[1];
-      sum2 += color[2];
-      list0[idData] = color[0];
-      list1[idData] = color[1];
-      list2[idData] = color[2];
+      list0.push_back(color[0]);
+      list1.push_back(color[1]);
+      list2.push_back(color[2]);
       }
 
-    if (cpt != 0)
+    // If we get elements
+    if (list0.size() != 0)
       {
-      meanValues->SetTuple3(id, sum0 / (double)cpt, sum1 / (double)cpt, sum2 / (double)cpt);
+      double sum0 = std::accumulate(list0.begin(), list0.end(), 0);
+      double sum1 = std::accumulate(list1.begin(), list1.end(), 0);
+      double sum2 = std::accumulate(list2.begin(), list2.end(), 0);
+      double nbVal = (double)list0.size();
+      meanValues->SetTuple3(id, sum0 / (double)nbVal, sum1 / (double)nbVal, sum2 / (double)nbVal);
       double median0, median1, median2;
       help::ComputeMedian<double>(list0, median0);
       help::ComputeMedian<double>(list1, median1);
       help::ComputeMedian<double>(list2, median2);
       medianValues->SetTuple3(id, median0, median1, median2);
       }
+
+    list0.clear();
+    list1.clear();
+    list2.clear();
     }
 
   mesh->GetPointData()->AddArray(meanValues);
