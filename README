@@ -1,11 +1,42 @@
 www.kitware.fr
-Aggregation of depth map according to ray potential function
+Aggregation of depth map according to ray potential function and projection of colors on final mesh
 
 
 ********************************************
           RECONSTRUCTION ALGORITHM
 ********************************************
-TODO
+-- Create an empty grid of voxels
+  *** For each voxel, try to project it on each depth map.
+  *** If the voxel can be projected, compute the 'real distance' between depth map
+  and voxel position (with KRT matrix)
+  *** Get the 2D position on current depth map
+  *** Get 'depth value' associated to 2D position
+  *** Use a TSDF (Truncated Signed Distance Function)* to compute the ray potential value
+      with 'real distance' and 'depth value'
+  *** Add it to the current voxel value.
+-- Create an isocontour according to the filled grid using VTK
+
+
+
+********************************************
+            COLORATION ALGORITHM
+********************************************
+Cross all 3D points.
+For each point, project it on all depth map and get the associated color.
+Store results on a vector and compute mean and median values.
+Also compute the number of depth map on which 3D points can be projected.
+Each points have 3 associated scalars :
+- MeanColoration (3 components colors - unsigned char)
+- MedianColoration (3 components colors - unsigned char)
+- NbProjectedDepthMap (1 component - int)
+
+
+
+********************************************
+            ReconstructionLib
+********************************************
+This library contains classes and static methods which can be used on both
+projects (Reconstruction and Coloration)
 
 
 
@@ -17,3 +48,40 @@ TODO
 ---- https://developer.nvidia.com/gameworksdownload#?dn=nsight-visual-studio-edition-4-0-0
 2. Follow this nvidia tutorial
 ---- http://docs.nvidia.com/nsight-visual-studio-edition/4.0/Nsight_Visual_Studio_Edition_User_Guide.htm#Debugging_CUDA_Application.htm%3FTocPath%3DCUDA%20Debugger|_____1
+
+
+
+********************************************
+                    TSDF
+********************************************
+** Eta is a percentage of rho ( 0 < Eta < 1)
+** Delta has to be superior to Thick
+
+                         'real distance' - 'depth value'
+                                         |
+                                         |
+                                         |         ---------------
+                                         |        /|             |
+                                         |       / |             |
+                                         |      /  |             |
+                                         |     /   |             |
+                                         |    /    | Rho         |
+                                         |   /     |             |
+                                         |  /      |             |
+                                         | /       |             |
+                                         |/        |             |___________________________
+---------------------------------------------------------------------------------------------
+                 |                      /
+                 | Eta                 /
+                 |                    /
+------------------                   /
+                 |                  /
+                 |                 /
+                 |                /
+                 |               /
+                 |              /
+                 ---------------
+                                <--------->
+                                   Thick
+                 <----------------------->
+                            Delta
