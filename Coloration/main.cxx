@@ -34,6 +34,7 @@
 #include "vtkNew.h"
 #include "vtkPointData.h"
 #include "vtkPolyData.h"
+#include "vtkSmartPointer.h"
 #include "vtkXMLPolyDataReader.h"
 #include "vtkXMLPolyDataWriter.h"
 
@@ -106,9 +107,8 @@ int main(int argc, char ** argv)
   ShowInformation("** Process coloration for " + std::to_string(nbMeshPoint) + " points ...");
 
 
-  std::vector<int> pointCount(nbMeshPoint);
   // Contains rgb values
-  vtkUnsignedCharArray* meanValues = vtkUnsignedCharArray::New();
+  vtkSmartPointer<vtkUnsignedCharArray> meanValues = vtkUnsignedCharArray::New();
   meanValues->SetNumberOfComponents(3);
   meanValues->SetNumberOfTuples(nbMeshPoint);
   meanValues->FillComponent(0, 0);
@@ -116,7 +116,7 @@ int main(int argc, char ** argv)
   meanValues->FillComponent(2, 0);
   meanValues->SetName("MeanColoration");
 
-  vtkUnsignedCharArray* medianValues = vtkUnsignedCharArray::New();
+  vtkSmartPointer<vtkUnsignedCharArray> medianValues = vtkUnsignedCharArray::New();
   medianValues->SetNumberOfComponents(3);
   medianValues->SetNumberOfTuples(nbMeshPoint);
   medianValues->FillComponent(0, 0);
@@ -124,7 +124,7 @@ int main(int argc, char ** argv)
   medianValues->FillComponent(2, 0);
   medianValues->SetName("MedianColoration");
 
-  vtkIntArray* projectedDMValue = vtkIntArray::New();
+  vtkSmartPointer<vtkIntArray> projectedDMValue = vtkIntArray::New();
   projectedDMValue->SetNumberOfComponents(1);
   projectedDMValue->SetNumberOfTuples(nbMeshPoint);
   projectedDMValue->FillComponent(0, 0);
@@ -201,6 +201,10 @@ int main(int argc, char ** argv)
   writer->SetFileName(g_outputPath.c_str());
   writer->SetInputData(mesh);
   writer->Update();
+
+  // Clean memory
+  for (int i = 0; i < dataList.size(); i++)
+    delete dataList[i];
 
   return EXIT_SUCCESS;
 }
