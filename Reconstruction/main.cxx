@@ -102,7 +102,7 @@ void ShowFilledParameters();
 void WriteSummaryFile(std::string path, int argc, char** argv);
 
 
-//cudareconstruction.exe --rayThick 0.08 --rayRho 0.8 --rayEta 0.03 --rayDelta 0.3 --threshBestCost 0.3 --gridDims 100 100 100 --gridSpacing 0.0348 0.0391 0.0342 --gridOrigin -2.29 -2.24 -2.2 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C:\Dev\nda\TRG\DataSonia2 --outputGridFilename C:\Dev\nda\TRG\DataSonia2\output.vts
+//--verbose --rayThick 0.027 --rayRho 0.8 --rayEta 0.03 --rayDelta 0.063 --threshBestCost 0.14 --gridDims 400 400 400 --gridSpacing 0.007 0.009 0.008 --gridOrigin - 1.48 - 1.94 - 2.19 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C : \Dev\nda\TRG\DATA\160428 - DM_ZNCC_ref_view_step_5_low_res --outputGridFilename C : \Dev\nda\TRG\DATA\160428 - DM_ZNCC_ref_view_step_5_low_res\output.vts
 //-----------------------------------------------------------------------------
 /* Main function */
 int main(int argc, char ** argv)
