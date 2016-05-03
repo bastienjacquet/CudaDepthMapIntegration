@@ -72,7 +72,7 @@ double thresholdBestCost = 0.14;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 bool writeSummaryFile = false; // Define if a file with all parameters will be write at the end of execution
-bool forceCubique = false; // Force to set the voxel to have the same size on X, Y and Z
+bool forceCubicVoxel = false; // Force to set the voxel to have the same size on X, Y and Z
 
 //-----------------------------------------------------------------------------
 // FILLED ATTRIBUTES
@@ -209,17 +209,17 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information on console");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters (will be write on dataFolder)");
-  arg.AddBooleanArgument("--forceCubique", &forceCubique, "Define if voxel have the same spacing on X, Y and Z (min of three spacing) Dimensions are recomputed");
+  arg.AddBooleanArgument("--forceCubicVoxel", &forceCubicVoxel, "Define if voxel have the same spacing on X, Y and Z (min of three spacing) Dimensions are recomputed");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
 
   int result = arg.Parse();
   if (!result || help)
     {
     std::cerr << arg.GetHelp();
-    std::cerr << "Command line examples for using --forceCubique or not :" << std::endl;
-    std::cerr << "***  WITH --forceCubique : gridOrig, gridEnd, gridSpacing" << std::endl;
+    std::cerr << "Command line examples for using --forceCubic or not :" << std::endl;
+    std::cerr << "***  WITH --forceCubic : gridOrig, gridEnd, gridSpacing" << std::endl;
     std::cerr << "OR" << std::endl;
-    std::cerr << "*** WITHOUT -- forceCubique : gridOrig, gridEnd, gridDims" << std::endl;
+    std::cerr << "*** WITHOUT --forceCubic : gridOrig, gridEnd, gridDims" << std::endl;
     return false;
     }
 
@@ -255,10 +255,9 @@ bool ReadArguments(int argc, char ** argv)
 
   if (!AreVectorsOrthogonal())
     {
-    std::cerr << "Given vectors are not orthogonals" << std::endl;
+    std::cerr << "Given vectors are not orthogonals." << std::endl;
     return false;
     }
-
 
 
   // Get the real size on each axis
@@ -266,7 +265,7 @@ bool ReadArguments(int argc, char ** argv)
   double sizeY = g_gridEnd[1] - g_gridOrigin[1];
   double sizeZ = g_gridEnd[2] - g_gridOrigin[2];
 
-  if (forceCubique)
+  if (forceCubicVoxel)
     {
     // Get the minimum spacing
     std::vector<double>::iterator iter = std::min_element(std::begin(g_gridSpacing), std::end(g_gridSpacing));
