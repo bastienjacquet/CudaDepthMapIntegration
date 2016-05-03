@@ -61,11 +61,10 @@ protected:
   void ReadDepthMap(std::string path);
 
   // Attributes
-  vtkImageData* depthMap;
-  vtkMatrix3x3* matrixK;
-  vtkMatrix4x4* matrix4K;
-  vtkMatrix4x4* matrixTR;
-  int* depthDims;
+  vtkImageData* DepthMap;
+  vtkMatrix3x3* MatrixK;
+  vtkMatrix4x4* Matrix4K;
+  vtkMatrix4x4* MatrixTR;
 };
 
 #endif

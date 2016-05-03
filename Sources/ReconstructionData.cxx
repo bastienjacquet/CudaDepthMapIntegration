@@ -27,7 +27,10 @@
 // LIABILITY, OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 // OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "Helper.h"
 #include "ReconstructionData.h"
+
+#include <sstream>
 
 // VTK includes
 #include "vtkDoubleArray.h"
@@ -35,28 +38,24 @@
 #include "vtkPointData.h"
 #include "vtkXMLImageDataReader.h"
 
-#include "Helper.h"
-
-#include <sstream>
 
 ReconstructionData::ReconstructionData()
 {
-  this->depthMap = nullptr;
-  this->matrixK = nullptr;
-  this->matrixTR = nullptr;
+  this->DepthMap = nullptr;
+  this->MatrixK = nullptr;
+  this->MatrixTR = nullptr;
 }
 
 ReconstructionData::ReconstructionData(std::string depthPath,
                                        std::string matrixPath)
 {
-  // Read DEPTH MAP an fill this->depthMap
+  // Read DEPTH MAP an fill this->DepthMap
   this->ReadDepthMap(depthPath);
-  this->depthDims = this->depthMap->GetDimensions();
 
   // Read KRTD FILE
   vtkMatrix3x3* K = vtkMatrix3x3::New();
-  this->matrixTR = vtkMatrix4x4::New();
-  help::ReadKrtdFile(matrixPath, K, this->matrixTR);
+  this->MatrixTR = vtkMatrix4x4::New();
+  help::ReadKrtdFile(matrixPath, K, this->MatrixTR);
   // Set matrix K to  create matrix4x4 for K
   this->SetMatrixK(K);
 
@@ -64,23 +63,20 @@ ReconstructionData::ReconstructionData(std::string depthPath,
 
 ReconstructionData::~ReconstructionData()
 {
-  if (this->depthMap)
-    this->depthMap->Delete();
-  if (this->matrixK)
-    this->matrixK->Delete();
-  if (this->matrixTR)
-    this->matrixTR->Delete();
-}
-
-int* ReconstructionData::GetDepthMapDimensions()
-{
-  return this->depthDims;
+  if (this->DepthMap)
+    this->DepthMap->Delete();
+  if (this->MatrixK)
+    this->MatrixK->Delete();
+  if (this->MatrixTR)
+    this->MatrixTR->Delete();
+  if (this->Matrix4K)
+    this->Matrix4K->Delete();
 }
 
 void ReconstructionData::GetColorValue(int* pixelPosition, double rgb[3])
 {
   vtkUnsignedCharArray* color =
-    vtkUnsignedCharArray::SafeDownCast(this->depthMap->GetPointData()->GetArray("Color"));
+    vtkUnsignedCharArray::SafeDownCast(this->DepthMap->GetPointData()->GetArray("Color"));
 
   if (color == nullptr)
     {
@@ -88,13 +84,15 @@ void ReconstructionData::GetColorValue(int* pixelPosition, double rgb[3])
     return;
     }
 
+  int* depthDims = this->DepthMap->GetDimensions();
+
   int pix[3];
   pix[0] = pixelPosition[0];
-  pix[1] = this->depthDims[1] - 1 - pixelPosition[1];
+  pix[1] = depthDims[1] - 1 - pixelPosition[1];
   pix[2] = 0;
 
-  int id = this->depthMap->ComputePointId(pix);
-  double* temp = color->GetTuple(id);
+  int id = this->DepthMap->ComputePointId(pix);
+  double* temp = color->GetTuple3(id);
   for (size_t i = 0; i < 3; i++)
   {
     rgb[i] = temp[i];
@@ -103,33 +101,33 @@ void ReconstructionData::GetColorValue(int* pixelPosition, double rgb[3])
 
 vtkImageData* ReconstructionData::GetDepthMap()
 {
-  return this->depthMap;
+  return this->DepthMap;
 }
 
 vtkMatrix3x3* ReconstructionData::Get3MatrixK()
 {
-  return this->matrixK;
+  return this->MatrixK;
 }
 
 vtkMatrix4x4* ReconstructionData::Get4MatrixK()
 {
-  return this->matrix4K;
+  return this->Matrix4K;
 }
 
 vtkMatrix4x4* ReconstructionData::GetMatrixTR()
 {
-  return this->matrixTR;
+  return this->MatrixTR;
 }
 
 void ReconstructionData::ApplyDepthThresholdFilter(double thresholdBestCost)
 {
-  if (this->depthMap == nullptr)
+  if (this->DepthMap == nullptr)
     return;
 
   vtkDoubleArray* depths =
-    vtkDoubleArray::SafeDownCast(this->depthMap->GetPointData()->GetArray("Depths"));
+    vtkDoubleArray::SafeDownCast(this->DepthMap->GetPointData()->GetArray("Depths"));
   vtkDoubleArray* bestCost =
-    vtkDoubleArray::SafeDownCast(this->depthMap->GetPointData()->GetArray("Best Cost Values"));
+    vtkDoubleArray::SafeDownCast(this->DepthMap->GetPointData()->GetArray("Best Cost Values"));
 
   if (depths == nullptr)
     {
@@ -154,26 +152,26 @@ void ReconstructionData::ApplyDepthThresholdFilter(double thresholdBestCost)
 
 void ReconstructionData::SetDepthMap(vtkImageData* data)
 {
-  this->depthMap = data;
+  this->DepthMap = data;
 }
 
 void ReconstructionData::SetMatrixK(vtkMatrix3x3* matrix)
 {
-  this->matrixK = matrix;
-  this->matrix4K = vtkMatrix4x4::New();
-  this->matrix4K->Identity();
+  this->MatrixK = matrix;
+  this->Matrix4K = vtkMatrix4x4::New();
+  this->Matrix4K->Identity();
   for (int i = 0; i < 3; i++)
   {
     for (int j = 0; j < 3; j++)
     {
-      this->matrix4K->SetElement(i, j, this->matrixK->GetElement(i, j));
+      this->Matrix4K->SetElement(i, j, this->MatrixK->GetElement(i, j));
     }
   }
 }
 
 void ReconstructionData::SetMatrixTR(vtkMatrix4x4* matrix)
 {
-  this->matrixTR = matrix;
+  this->MatrixTR = matrix;
 }
 
 void ReconstructionData::ReadDepthMap(std::string path)
@@ -181,6 +179,6 @@ void ReconstructionData::ReadDepthMap(std::string path)
   vtkXMLImageDataReader* depthMapReader = vtkXMLImageDataReader::New();
   depthMapReader->SetFileName(path.c_str());
   depthMapReader->Update();
-  this->depthMap = depthMapReader->GetOutput();
+  this->DepthMap = depthMapReader->GetOutput();
 
 }

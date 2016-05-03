@@ -101,7 +101,7 @@ int main(int argc, char ** argv)
   vtkPoints* meshPointList = mesh->GetPoints();
   vtkIdType nbMeshPoint = meshPointList->GetNumberOfPoints();
   //vtkIdType nbMeshPoint = 3;
-  int* depthMapDimensions = dataList[0]->GetDepthMapDimensions();
+  int* depthMapDimensions = dataList[0]->GetDepthMap()->GetDimensions();
 
   ShowInformation("** Process coloration for " + std::to_string(nbMeshPoint) + " points ...");
 
