@@ -105,11 +105,11 @@ __device__ void rayPotential(TypeCompute realDistance, TypeCompute depthMapDista
   int sign = diff != 0 ? diff / absoluteDiff : 0;
 
   if (absoluteDiff > c_rayPotentialDelta)
-    res = diff > 0 ? 0 : -c_rayPotentialEta*c_rayPotentialRho;
+    res = diff > 0 ? 0 : - c_rayPotentialEta * c_rayPotentialRho;
   else if (absoluteDiff > c_rayPotentialThick)
-    res = c_rayPotentialRho*sign;
+    res = c_rayPotentialRho * sign;
   else
-    res = (c_rayPotentialRho / c_rayPotentialThick)* diff;
+    res = (c_rayPotentialRho / c_rayPotentialThick) * diff;
 }
 
 // ----------------------------------------------------------------------------
