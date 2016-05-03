@@ -29,6 +29,8 @@
 
 #include "vtkCudaReconstructionFilter.h"
 
+#include "vtkCellDataToPointData.h"
+#include "vtkContourFilter.h"
 #include "vtkImageData.h"
 #include "vtkMath.h"
 #include "vtkMatrix3x3.h"
@@ -36,6 +38,7 @@
 #include "vtkNew.h"
 #include "vtkPiecewiseFunction.h"
 #include "vtkPolyData.h"
+#include "vtkPointData.h"
 #include "vtkStructuredGrid.h"
 #include "vtkTransform.h"
 #include "vtkTransformFilter.h"
@@ -43,6 +46,7 @@
 #include "vtkXMLImageDataReader.h"
 #include "vtkXMLStructuredGridReader.h"
 #include "vtkXMLStructuredGridWriter.h"
+#include "vtkXMLPolyDataWriter.h"
 
 #include <vtksys/CommandLineArguments.hxx>
 #include <vtksys/SystemTools.hxx>
@@ -69,6 +73,7 @@ double rayPotentialRho = 0.8; // Define parameter 'rho' on ray potential functio
 double rayPotentialEta = 0.03;
 double rayPotentialDelta = 0.3;
 double thresholdBestCost = 0.14;
+double contourValue = 1.0;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 bool writeSummaryFile = false; // Define if a file with all parameters will be write at the end of execution
@@ -147,18 +152,41 @@ int main(int argc, char ** argv)
   std::string message = "Reconstruction execution time : " + std::to_string(g_reconstructionExecutionTime) + " s";
   ShowInformation(message);
 
-  ShowInformation("** Apply grid matrix to the reconstruction output...");
 
+  ShowInformation("** Transform cell data to point data...");
+  vtkNew<vtkCellDataToPointData> transformCellDataToPointData;
+  transformCellDataToPointData->SetInputData(cudaReconstructionFilter->GetOutput());
+  transformCellDataToPointData->PassCellDataOn();
+  transformCellDataToPointData->Update();
+
+
+  vtkImageData* out = transformCellDataToPointData->GetImageDataOutput();
+  out->GetPointData()->SetActiveScalars("reconstruction_scalar");
+
+
+  ShowInformation("** Compute contour...");
+  vtkNew<vtkContourFilter> contourFilter;
+  contourFilter->SetInputData(out);
+  contourFilter->SetNumberOfContours(1);
+  contourFilter->SetValue(0, contourValue);
+  contourFilter->Update();
+
+
+  ShowInformation("** Apply grid matrix to the reconstruction output...");
   vtkNew<vtkTransform> transform;
   transform->SetMatrix(g_gridMatrix);
   vtkNew<vtkTransformFilter> transformFilter;
-  transformFilter->SetInputConnection(cudaReconstructionFilter->GetOutputPort());
+  transformFilter->SetInputConnection(contourFilter->GetOutputPort());
   transformFilter->SetTransform(transform.Get());
   transformFilter->Update();
-  vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
+
 
   ShowInformation("** Save output...");
-  ShowInformation("Output path : " + g_outputGridFilename);
+  vtkNew<vtkXMLPolyDataWriter> writer;
+  writer->SetFileName(g_outputGridFilename.c_str());
+  writer->SetInputData(transformFilter->GetOutput());
+  writer->Write();
+
 
   g_totalExecutionTime = (double)(clock() - start) / CLOCKS_PER_SEC;
   if (writeSummaryFile)
@@ -167,10 +195,6 @@ int main(int argc, char ** argv)
     std::string filePath = g_pathFolder + "\\summary.txt";
     WriteSummaryFile(filePath, argc, argv);
     }
-  vtkNew<vtkXMLStructuredGridWriter> gridWriter;
-  gridWriter->SetFileName(g_outputGridFilename.c_str());
-  gridWriter->SetInputData(outputGrid);
-  gridWriter->Write();
 
   // Clean pointers
   g_gridMatrix->Delete();
@@ -206,6 +230,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "It has to be superior to Thick (default 0.3)");
   arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map (default 0.14)");
   arg.AddArgument("--gridEnd", argT::MULTI_ARGUMENT, &g_gridEnd, "Define the end of the grid");
+  arg.AddArgument("--contour", argT::SPACE_ARGUMENT, &contourValue, "Define the isocontour value when contour is extracted from reconstructionFilter (default 1.0)");
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information on console");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters (will be write on dataFolder)");
