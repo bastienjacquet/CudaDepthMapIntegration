@@ -27,6 +27,8 @@
 // LIABILITY, OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 // OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "vtkCudaReconstructionFilter.h"
+
 #include "vtkImageData.h"
 #include "vtkMath.h"
 #include "vtkMatrix3x3.h"
@@ -34,7 +36,6 @@
 #include "vtkNew.h"
 #include "vtkPiecewiseFunction.h"
 #include "vtkPolyData.h"
-#include "vtkCudaReconstructionFilter.h"
 #include "vtkStructuredGrid.h"
 #include "vtkTransform.h"
 #include "vtkTransformFilter.h"
@@ -47,8 +48,6 @@
 #include <vtksys/SystemTools.hxx>
 
 #include <algorithm>
-#include "ReconstructionData.h"
-
 #include <string>
 
 //-----------------------------------------------------------------------------
@@ -69,7 +68,7 @@ double rayPotentialThick = 2; // Define parameter 'thick' on ray potential funct
 double rayPotentialRho = 0.8; // Define parameter 'rho' on ray potential function when cuda is using
 double rayPotentialEta = 0.03;
 double rayPotentialDelta = 0.3;
-double thresholdBestCost = 0;
+double thresholdBestCost = 0.14;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 bool writeSummaryFile = false; // Define if a file with all parameters will be write at the end of execution
@@ -80,7 +79,6 @@ bool forceCubique = false; // Force to set the voxel to have the same size on X,
 //-----------------------------------------------------------------------------
 std::vector<std::string> g_depthMapPathList; // Contains all depth map path
 std::vector<std::string> g_KRTPathList; // Contains all KRT matrix path
-std::vector<ReconstructionData*> g_dataList; // Contains all read depth map and matrix
 std::string g_globalKRTDFilePath;
 std::string g_globalVTIFilePath;
 vtkMatrix4x4* g_gridMatrix;
@@ -176,7 +174,6 @@ int main(int argc, char ** argv)
 
   // Clean pointers
   g_gridMatrix->Delete();
-  g_dataList.clear();
 
   ShowInformation("---END---");
 
@@ -196,22 +193,22 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--gridDims", argT::MULTI_ARGUMENT, &g_gridDims, "Input grid dimensions (required)");
   arg.AddArgument("--gridSpacing", argT::MULTI_ARGUMENT, &g_gridSpacing, "Input grid spacing (required)");
   arg.AddArgument("--gridOrigin", argT::MULTI_ARGUMENT, &g_gridOrigin, "Input grid origin (required)");
-  arg.AddArgument("--gridVecX", argT::MULTI_ARGUMENT, &g_gridVecX, "Input grid direction X (required)");
-  arg.AddArgument("--gridVecY", argT::MULTI_ARGUMENT, &g_gridVecY, "Input grid direction Y (required)");
-  arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Input grid direction Z (required)");
+  arg.AddArgument("--gridVecX", argT::MULTI_ARGUMENT, &g_gridVecX, "Input grid direction X (default 1 0 0)");
+  arg.AddArgument("--gridVecY", argT::MULTI_ARGUMENT, &g_gridVecY, "Input grid direction Y (default 0 1 0)");
+  arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Input grid direction Z (default 0 0 1)");
   arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (required)");
   arg.AddArgument("--dataFolder", argT::SPACE_ARGUMENT, &g_pathFolder, "Folder which contains all data (required)");
   arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default vtiList.txt)");
   arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default kList.txt)");
   arg.AddArgument("--rayThick", argT::SPACE_ARGUMENT, &rayPotentialThick, "Define the ray potential thickness threshold when cuda is using (default 2)");
-  arg.AddArgument("--rayRho", argT::SPACE_ARGUMENT, &rayPotentialRho, "Define the ray potential rho when cuda is using (default 3)");
-  arg.AddArgument("--rayEta", argT::SPACE_ARGUMENT, &rayPotentialEta, "0 < Eta < 1 : will be applied as a percentage of rho");
-  arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "It has to be superior to Thick");
-  arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map");
+  arg.AddArgument("--rayRho", argT::SPACE_ARGUMENT, &rayPotentialRho, "Define the ray potential rho when cuda is using (default 0.8)");
+  arg.AddArgument("--rayEta", argT::SPACE_ARGUMENT, &rayPotentialEta, "0 < Eta < 1 : will be applied as a percentage of rho (default 0.03)");
+  arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "It has to be superior to Thick (default 0.3)");
+  arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map (default 0.14)");
   arg.AddArgument("--gridEnd", argT::MULTI_ARGUMENT, &g_gridEnd, "Define the end of the grid");
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
-  arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
-  arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters");
+  arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information on console");
+  arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters (will be write on dataFolder)");
   arg.AddBooleanArgument("--forceCubique", &forceCubique, "Define if voxel have the same spacing on X, Y and Z (min of three spacing) Dimensions are recomputed");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
 
@@ -235,25 +232,25 @@ bool ReadArguments(int argc, char ** argv)
     }
 
   if (g_gridVecX.size() == 0)
-  {
+    {
     g_gridVecX.push_back(1);
     g_gridVecX.push_back(0);
     g_gridVecX.push_back(0);
-  }
+    }
 
   if (g_gridVecY.size() == 0)
-  {
+    {
     g_gridVecY.push_back(0);
     g_gridVecY.push_back(1);
     g_gridVecY.push_back(0);
-  }
+    }
 
   if (g_gridVecZ.size() == 0)
-  {
+    {
     g_gridVecZ.push_back(0);
     g_gridVecZ.push_back(0);
     g_gridVecZ.push_back(1);
-  }
+    }
 
 
   if (!AreVectorsOrthogonal())
@@ -367,6 +364,8 @@ void ShowInformation(std::string information)
     }
 }
 
+//-----------------------------------------------------------------------------
+/* Display all parameters on the console */
 void ShowFilledParameters()
 {
   if (!verbose)
@@ -405,6 +404,7 @@ void ShowFilledParameters()
   std::cout << std::endl;
   std::cout << std::endl;
 }
+
 //-----------------------------------------------------------------------------
 /* Write a file with all parameters and command line */
 void WriteSummaryFile(std::string path, int argc, char** argv)
@@ -430,7 +430,7 @@ void WriteSummaryFile(std::string path, int argc, char** argv)
   output << "--- Origin     : ( " << g_gridOrigin[0] << ", " << g_gridOrigin[1] << ", " << g_gridOrigin[2] << " )" << std::endl;
   output << "--- End        : ( " << g_gridEnd[0] << ", " << g_gridEnd[1] << ", " << g_gridEnd[2] << " )" << std::endl;
   output << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
-  output << "--- Real volume size : ( " << g_gridDims[0] * g_gridSpacing[0] << ", " << g_gridDims[1] * g_gridSpacing[1] << ", " << g_gridDims[2] * g_gridSpacing[2] << ")" << std::endl;
+  output << "--- Real volume size : ( " << g_gridOrigin[0] - g_gridEnd[0] << ", " << g_gridOrigin[1] - g_gridEnd[1] << ", " << g_gridOrigin[2] - g_gridEnd[2] << ")" << std::endl;
   output << "--- Matrix :" << std::endl;
   std::string l1 = "  " + std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
   std::string l2 = "  " + std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
