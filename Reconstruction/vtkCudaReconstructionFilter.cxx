@@ -51,10 +51,10 @@
 #include "Helper.h"
 
 #include <cmath>
-#include <vector>
-#include <time.h>
 #include <string>
 #include <sstream>
+#include <time.h>
+#include <vector>
 
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
@@ -73,7 +73,6 @@ vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 {
   this->SetNumberOfInputPorts(1);
   this->GridMatrix = 0;
-  this->UseCuda = false;
   this->RayPotentialRho = 0;
   this->RayPotentialThickness = 0;
   this->RayPotentialDelta = 0;
@@ -86,19 +85,9 @@ vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
 {
-  this->DataList.clear();
-}
-
-//----------------------------------------------------------------------------
-void vtkCudaReconstructionFilter::UseCudaOn()
-{
-  this->SetUseCuda(true);
-}
-
-//----------------------------------------------------------------------------
-void vtkCudaReconstructionFilter::UseCudaOff()
-{
-  this->SetUseCuda(false);
+  this->FilePathKRTD = 0;
+  this->FilePathVTI = 0;
+  this->GridMatrix = 0;
 }
 
 //----------------------------------------------------------------------------
@@ -143,31 +132,15 @@ int vtkCudaReconstructionFilter::RequestData(
   outGrid->ShallowCopy(inGrid);
   outGrid->GetCellData()->AddArray(outScalar.Get());
 
-  // computation
-  if (!this->UseCuda)
+  // Check if all variables used in cuda are set
+  if (this->RayPotentialRho == 0 && this->RayPotentialThickness == 0)
     {
-    // TODO
-    //for (int i = 0; i < this->DataList.size(); i++)
-    //  {
-    //  ReconstructionData* currentData = this->DataList[i];
-    //  vtkCudaReconstructionFilter::ComputeWithoutCuda(
-    //    this->GridMatrix, gridOrig, gridDims, gridSpacing,
-    //    currentData->GetDepthMap(), currentData->Get3MatrixK(), currentData->GetMatrixTR(),
-    //    outScalar.Get());
-    //  }
+    std::cerr << "Error : Ray potential Rho or Thickness or both have not been set" << std::endl;
+    return 0;
     }
-  else
-    {
-    // Check if all variables used in cuda are set
-    if (this->RayPotentialRho == 0 && this->RayPotentialThickness == 0)
-      {
-      std::cerr << "Error : Ray potential Rho or Thickness or both have not been set" << std::endl;
-      return 0;
-      }
 
-    this->ComputeWithCuda(gridDims, gridOrig, gridSpacing, outScalar.Get());
+  this->Compute(gridDims, gridOrig, gridSpacing, outScalar.Get());
 
-    }
 
   clock_t end = clock();
   this->ExecutionTime = (double)(end - start) / CLOCKS_PER_SEC;
@@ -175,106 +148,9 @@ int vtkCudaReconstructionFilter::RequestData(
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::ComputeWithoutCuda(
-    vtkMatrix4x4 *gridMatrix, double gridOrig[3], int gridDims[3], double gridSpacing[3],
-    vtkImageData* depthMap, vtkMatrix3x3 *depthMapMatrixK, vtkMatrix4x4 *depthMapMatrixTR,
-    vtkDoubleArray* outScalar)
-{
-  vtkIdType voxelsNb = outScalar->GetNumberOfTuples();
-
-  // get depth scalars
-  vtkDoubleArray* depths = vtkDoubleArray::SafeDownCast(depthMap->GetPointData()->GetArray("Depths"));
-  if (!depths)
-    {
-    // todo error message
-    std::cout << "Bad depths." << std::endl;
-    return 0;
-    }
-
-  // create transforms from matrices
-  vtkNew<vtkTransform> transformGridToRealCoords;
-  transformGridToRealCoords->SetMatrix(gridMatrix);
-  vtkNew<vtkTransform> transformSceneToCamera;
-  transformSceneToCamera->SetMatrix(depthMapMatrixTR);
-  // change the matrix 3x3 into matrix 4x4 to be compatible with vtkTransform
-  vtkNew<vtkMatrix4x4> depthMapMatrixK4x4;
-  depthMapMatrixK4x4->Identity();
-  for (int i = 0; i < 3; i++)
-    {
-    for (int j = 0; j < 3; j++)
-      {
-      depthMapMatrixK4x4->SetElement(i, j, depthMapMatrixK->GetElement(i, j));
-      }
-    }
-  vtkNew<vtkTransform> transformCameraToDepthMap;
-  transformCameraToDepthMap->SetMatrix(depthMapMatrixK4x4.Get());
-
-  for (vtkIdType i_vox = 0; i_vox < voxelsNb; i_vox++)
-    {
-    vtkIdType ijkVox[3];
-    ijkVox[0] = i_vox % (gridDims[0] - 1);
-    ijkVox[1] = (i_vox / (gridDims[0] - 1)) % (gridDims[1] - 1);
-    ijkVox[2] = i_vox / ((gridDims[0] - 1) * (gridDims[1] - 1));
-
-    // voxel center
-    double voxCenterTemp[3];
-    for (int i = 0; i < 3; i++)
-      {
-      voxCenterTemp[i] = gridOrig[i] + ((double)ijkVox[i] + 0.5) * gridSpacing[i];
-      }
-    double voxCenter[3];
-    transformGridToRealCoords->TransformPoint(voxCenterTemp, voxCenter);
-
-    // voxel center in camera coords
-    double voxCameraCoords[3];
-    transformSceneToCamera->TransformPoint(voxCenter, voxCameraCoords);
-
-    // compute distance between voxel and camera
-    double distanceVoxCam = vtkMath::Norm(voxCameraCoords);
-
-    // voxel center in depth map homogeneous coords
-    double voxDepthMapCoordsHomo[3];
-    transformCameraToDepthMap->TransformVector(voxCameraCoords, voxDepthMapCoordsHomo);
-
-    // voxel center in depth map coords
-    double voxDepthMapCoords[2];
-    voxDepthMapCoords[0] = voxDepthMapCoordsHomo[0] / voxDepthMapCoordsHomo[2];
-    voxDepthMapCoords[1] = voxDepthMapCoordsHomo[1] / voxDepthMapCoordsHomo[2];
-
-    // compute depth from depth map
-    int ijk[3];
-    ijk[0] = round(voxDepthMapCoords[0]);
-    ijk[1] = round(voxDepthMapCoords[1]);
-    ijk[2] = 0;
-    int dim[3];
-    depthMap->GetDimensions(dim);
-    if (ijk[0] < 0 || ijk[0] > dim[0] - 1 || ijk[1] < 0 || ijk[1] > dim[1] - 1)
-      {
-      continue;
-      }
-    vtkIdType id = vtkStructuredData::ComputePointId(dim, ijk);
-    if (0 > id && id >= depthMap->GetNumberOfPoints())
-      {
-      // todo error message
-      std::cerr << "Bad conversion from ijk to id." << std::endl;
-      continue;
-      }
-    double depth = depths->GetValue(id);
-
-    // compute new val
-    // todo replace by class function
-    double currentVal = outScalar->GetValue(i_vox);
-    double shift;
-    this->RayPotential(distanceVoxCam, depth, shift);
-    outScalar->SetValue(i_vox, currentVal + shift);
-    }
-
-  return 1;
-}
 
 //----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::ComputeWithCuda(int gridDims[3], double gridOrig[3],
+int vtkCudaReconstructionFilter::Compute(int gridDims[3], double gridOrig[3],
   double gridSpacing[3], vtkDoubleArray* outScalar)
 {
   std::vector<std::string> vtiList = help::ExtractAllFilePath(this->FilePathVTI);
@@ -298,24 +174,6 @@ int vtkCudaReconstructionFilter::ComputeWithCuda(int gridDims[3], double gridOri
                                 outScalar);
 
   return 0;
-}
-
-//----------------------------------------------------------------------------
-void vtkCudaReconstructionFilter::RayPotential(double realDistance,
-                                                double depthMapDistance,
-                                                double& shift)
-{
-  double diff = realDistance - depthMapDistance;
-
-  double absolute = abs(diff);
-  int sign = diff / absolute;
-
-  if (absolute > this->RayPotentialDelta)
-    shift = diff > 0 ? 0 : -this->RayPotentialEta;
-  else if (absolute > this->RayPotentialThickness)
-    shift = this->RayPotentialRho*sign;
-  else
-    shift = (this->RayPotentialRho / this->RayPotentialThickness)* diff;
 }
 
 

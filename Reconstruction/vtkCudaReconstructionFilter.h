@@ -72,25 +72,16 @@ public:
   // Description :
   // Entire path to access file that contains all krtd file names
   // krtd files have to be in the same folder as FilePathKRTD
-  vtkSetMacro(FilePathKRTD, const char*);
+  vtkSetStringMacro(FilePathKRTD);
   // Description :
   // Entire path to access file that contains all vti file names
   // vti files have to be in the same folder as FilePathVTI
-  vtkSetMacro(FilePathVTI, const char*);
+  vtkSetStringMacro(FilePathVTI);
 
-  // Description :
-  // Define if algorithm is launched on the GPU with cuda (or not)
-  vtkSetMacro(UseCuda, bool);
   //Description :
   // Get the execution time when update is launch (in seconds)
   vtkGetMacro(ExecutionTime, double);
 
-  // Description :
-  // The algorithm will be launched with cuda on GPU (fast)
-  void UseCudaOn();
-  // Description :
-  // The algorithm will be launched withou cuda on CPU (slow)
-  void UseCudaOff();
   // Description
   // Define the matrix transform to orientate the output volume
   // to the right axis
@@ -108,29 +99,17 @@ protected:
   virtual int RequestUpdateExtent(vtkInformation *, vtkInformationVector **,
     vtkInformationVector *);
 
-  int ComputeWithoutCuda(
-    vtkMatrix4x4 *gridMatrix, double gridOrig[3], int gridDims[3], double gridSpacing[3],
-    vtkImageData* depthMap, vtkMatrix3x3 *depthMapMatrixK, vtkMatrix4x4 *depthMapMatrixTR,
-    vtkDoubleArray* outScalar);
 
-  int ComputeWithCuda(int gridDims[3], double gridOrig[3],
-                      double gridSpacing[3], vtkDoubleArray* outScalar);
-
-  void RayPotential(double realDistance, double depthMapDistance, double& val);
+  int Compute(int gridDims[3], double gridOrig[3],
+              double gridSpacing[3], vtkDoubleArray* outScalar);
 
 
-  // Description :
-  // Read .krtd file which contains 2 matrix
-  bool ReadKrtdFile(std::string filename, vtkMatrix3x3* matrixK, vtkMatrix4x4* matrixTR);
-
-  std::vector<ReconstructionData*> DataList;
   vtkMatrix4x4 *GridMatrix;
   double RayPotentialRho;
   double RayPotentialThickness;
   double RayPotentialEta;
   double RayPotentialDelta;
   double ThresholdBestCost;
-  bool UseCuda;
   double ExecutionTime;
   const char* FilePathKRTD;
   const char* FilePathVTI;
