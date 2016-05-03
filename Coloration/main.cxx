@@ -124,7 +124,7 @@ int main(int argc, char ** argv)
   medianValues->FillComponent(2, 0);
   medianValues->SetName("MedianColoration");
 
-  vtkDoubleArray* projectedDMValue = vtkDoubleArray::New();
+  vtkIntArray* projectedDMValue = vtkIntArray::New();
   projectedDMValue->SetNumberOfComponents(1);
   projectedDMValue->SetNumberOfTuples(nbMeshPoint);
   projectedDMValue->FillComponent(0, 0);
