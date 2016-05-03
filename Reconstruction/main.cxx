@@ -68,7 +68,6 @@ double rayPotentialRho = 0.8; // Define parameter 'rho' on ray potential functio
 double rayPotentialEta = 0.03;
 double rayPotentialDelta = 0.3;
 double thresholdBestCost = 0;
-double thresholdUniqueness = 0;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 bool writeSummaryFile = false; // Define if a file with all parameters will be write at the end of execution
@@ -206,7 +205,6 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--rayEta", argT::SPACE_ARGUMENT, &rayPotentialEta, "0 < Eta < 1 : will be applied as a percentage of rho");
   arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "It has to be superior to Thick");
   arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map");
-  arg.AddArgument("--threshUniqueness", argT::SPACE_ARGUMENT, &thresholdUniqueness, "Define threshold that will be applied on depth map");
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters");
@@ -346,7 +344,6 @@ void ShowFilledParameters()
   std::cout << "** DEPTH MAP :" << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "--- Threshold for BestCost  : " << std::to_string(thresholdBestCost) << std::endl;
-  std::cout << "--- Threshold for Uniqueness : " << std::to_string(thresholdUniqueness) << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "** CUDA :" << std::endl;
   std::cout << "----------------------" << std::endl;
@@ -394,7 +391,6 @@ void WriteSummaryFile(std::string path, int argc, char** argv)
   output << "** DEPTH MAP :" << std::endl;
   output << "----------------------" << std::endl;
   output << "--- Threshold for BestCost  : " << std::to_string(thresholdBestCost) << std::endl;
-  output << "--- Threshold for Uniqueness : " << std::to_string(thresholdUniqueness) << std::endl;
   output << std::endl;
   output << "----------------------" << std::endl;
   output << "** CUDA :" << std::endl;
