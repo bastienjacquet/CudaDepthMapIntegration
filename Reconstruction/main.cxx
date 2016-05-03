@@ -127,7 +127,6 @@ int main(int argc, char ** argv)
   grid->SetOrigin(&g_gridOrigin[0]);
 
   ShowInformation("** Launch reconstruction...");
-
   std::string dmapGlobalFile = g_pathFolder + "\\" + g_depthMapContainer;
   std::string krtGlobalFile = g_pathFolder + "\\" + g_KRTContainer;
 
@@ -220,7 +219,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--gridVecX", argT::MULTI_ARGUMENT, &g_gridVecX, "Input grid direction X (default 1 0 0)");
   arg.AddArgument("--gridVecY", argT::MULTI_ARGUMENT, &g_gridVecY, "Input grid direction Y (default 0 1 0)");
   arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Input grid direction Z (default 0 0 1)");
-  arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (required)");
+  arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (.vtp) (required)");
   arg.AddArgument("--dataFolder", argT::SPACE_ARGUMENT, &g_pathFolder, "Folder which contains all data (required)");
   arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default vtiList.txt)");
   arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default kList.txt)");
@@ -277,6 +276,12 @@ bool ReadArguments(int argc, char ** argv)
     g_gridVecZ.push_back(1);
     }
 
+  std::string extension(".vtp");
+  if (g_outputGridFilename.find(extension) == std::string::npos)
+    {
+    std::cerr << "Error : Bad output extension, it has to be .vtp" << std::endl;
+    return false;
+    }
 
   if (!AreVectorsOrthogonal())
     {
