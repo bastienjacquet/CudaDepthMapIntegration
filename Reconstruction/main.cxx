@@ -56,6 +56,7 @@
 std::vector<int> g_gridDims;
 std::vector<double> g_gridSpacing;
 std::vector<double> g_gridOrigin;
+std::vector<double> g_gridEnd;
 std::vector<double> g_gridVecX;
 std::vector<double> g_gridVecY;
 std::vector<double> g_gridVecZ;
@@ -205,6 +206,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--rayEta", argT::SPACE_ARGUMENT, &rayPotentialEta, "0 < Eta < 1 : will be applied as a percentage of rho");
   arg.AddArgument("--rayDelta", argT::SPACE_ARGUMENT, &rayPotentialDelta, "It has to be superior to Thick");
   arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map");
+  arg.AddArgument("--gridEnd", argT::MULTI_ARGUMENT, &g_gridEnd, "Define the end of the grid");
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters");
@@ -331,6 +333,7 @@ void ShowFilledParameters()
   std::cout << "--- Dimensions : ( " << g_gridDims[0] << ", " << g_gridDims[1] << ", " << g_gridDims[2] << " )" << std::endl;
   std::cout << "--- Spacing    : ( " << g_gridSpacing[0] << ", " << g_gridSpacing[1] << ", " << g_gridSpacing[2] << " )" << std::endl;
   std::cout << "--- Origin     : ( " << g_gridOrigin[0] << ", " << g_gridOrigin[1] << ", " << g_gridOrigin[2] << " )" << std::endl;
+  std::cout << "--- End        : ( " << g_gridEnd[0] << ", " << g_gridEnd[1] << ", " << g_gridEnd[2] << " )" << std::endl;
   std::cout << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
   std::cout << "--- Real volume size : ( " << g_gridDims[0] * g_gridSpacing[0] << ", " << g_gridDims[1] * g_gridSpacing[1] << ", " << g_gridDims[2] * g_gridSpacing[2] << ")" << std::endl;
   std::cout << "--- Matrix :" << std::endl;
@@ -344,6 +347,7 @@ void ShowFilledParameters()
   std::cout << "** DEPTH MAP :" << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "--- Threshold for BestCost  : " << std::to_string(thresholdBestCost) << std::endl;
+  std::cout << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "** CUDA :" << std::endl;
   std::cout << "----------------------" << std::endl;
@@ -378,6 +382,7 @@ void WriteSummaryFile(std::string path, int argc, char** argv)
   output << "--- Dimensions : ( " << g_gridDims[0] << ", " << g_gridDims[1] << ", " << g_gridDims[2] << " )" << std::endl;
   output << "--- Spacing    : ( " << g_gridSpacing[0] << ", " << g_gridSpacing[1] << ", " << g_gridSpacing[2] << " )" << std::endl;
   output << "--- Origin     : ( " << g_gridOrigin[0] << ", " << g_gridOrigin[1] << ", " << g_gridOrigin[2] << " )" << std::endl;
+  output << "--- End        : ( " << g_gridEnd[0] << ", " << g_gridEnd[1] << ", " << g_gridEnd[2] << " )" << std::endl;
   output << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
   output << "--- Real volume size : ( " << g_gridDims[0] * g_gridSpacing[0] << ", " << g_gridDims[1] * g_gridSpacing[1] << ", " << g_gridDims[2] * g_gridSpacing[2] << ")" << std::endl;
   output << "--- Matrix :" << std::endl;
