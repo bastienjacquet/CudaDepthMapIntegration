@@ -46,6 +46,7 @@
 #include <vtksys/CommandLineArguments.hxx>
 #include <vtksys/SystemTools.hxx>
 
+#include <algorithm>
 #include "ReconstructionData.h"
 
 #include <string>
@@ -72,6 +73,7 @@ double thresholdBestCost = 0;
 bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 bool writeSummaryFile = false; // Define if a file with all parameters will be write at the end of execution
+bool forceCubique = false; // Force to set the voxel to have the same size on X, Y and Z
 
 //-----------------------------------------------------------------------------
 // FILLED ATTRIBUTES
@@ -210,12 +212,17 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information (default false)");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters");
+  arg.AddBooleanArgument("--forceCubique", &forceCubique, "Define if voxel have the same spacing on X, Y and Z (min of three spacing) Dimensions are recomputed");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
 
   int result = arg.Parse();
   if (!result || help)
     {
-    std::cout << arg.GetHelp() ;
+    std::cerr << arg.GetHelp();
+    std::cerr << "Command line examples for using --forceCubique or not :" << std::endl;
+    std::cerr << "***  WITH --forceCubique : gridOrig, gridEnd, gridSpacing" << std::endl;
+    std::cerr << "OR" << std::endl;
+    std::cerr << "*** WITHOUT -- forceCubique : gridOrig, gridEnd, gridDims" << std::endl;
     return false;
     }
 
@@ -253,6 +260,45 @@ bool ReadArguments(int argc, char ** argv)
     {
     std::cerr << "Given vectors are not orthogonals" << std::endl;
     return false;
+    }
+
+
+
+  // Get the real size on each axis
+  double sizeX = g_gridEnd[0] - g_gridOrigin[0];
+  double sizeY = g_gridEnd[1] - g_gridOrigin[1];
+  double sizeZ = g_gridEnd[2] - g_gridOrigin[2];
+
+  if (forceCubique)
+    {
+    // Get the minimum spacing
+    std::vector<double>::iterator iter = std::min_element(std::begin(g_gridSpacing), std::end(g_gridSpacing));
+    double min = *iter;
+
+    if (g_gridDims.size() == 0)
+      {
+      g_gridDims.resize(3);
+      }
+
+    // Compute the dimension on each axis
+    g_gridDims[0] = (int)(sizeX / min);
+    g_gridDims[1] = (int)(sizeY / min);
+    g_gridDims[2] = (int)(sizeZ / min);
+
+    for (int i = 0; i < 3; i++)
+      g_gridSpacing[i] = min;
+    }
+  else
+    {
+    if (g_gridSpacing.size() == 0)
+      {
+      g_gridSpacing.resize(3);
+      }
+
+    // Compute the spacing according to orig, end and dimension of grid
+    g_gridSpacing[0] = sizeX / (double)g_gridDims[0];
+    g_gridSpacing[1] = sizeY / (double)g_gridDims[1];
+    g_gridSpacing[2] = sizeZ / (double)g_gridDims[2];
     }
 
   return true;
