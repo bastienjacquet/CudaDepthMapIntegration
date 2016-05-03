@@ -74,7 +74,6 @@ double rayPotentialEta = 0.03;
 double rayPotentialDelta = 0.3;
 double thresholdBestCost = 0.14;
 double contourValue = 1.0;
-bool noCuda = false; // Determine if the algorithm reconstruction is launched on GPU (with cuda) or CPU (without cuda)
 bool verbose = false; // Display debug information during execution
 bool writeSummaryFile = false; // Define if a file with all parameters will be write at the end of execution
 bool forceCubicVoxel = false; // Force to set the voxel to have the same size on X, Y and Z
@@ -82,10 +81,6 @@ bool forceCubicVoxel = false; // Force to set the voxel to have the same size on
 //-----------------------------------------------------------------------------
 // FILLED ATTRIBUTES
 //-----------------------------------------------------------------------------
-std::vector<std::string> g_depthMapPathList; // Contains all depth map path
-std::vector<std::string> g_KRTPathList; // Contains all KRT matrix path
-std::string g_globalKRTDFilePath;
-std::string g_globalVTIFilePath;
 vtkMatrix4x4* g_gridMatrix;
 double g_reconstructionExecutionTime;
 double g_totalExecutionTime;
@@ -96,12 +91,12 @@ double g_totalExecutionTime;
 bool ReadArguments(int argc, char ** argv);
 bool AreVectorsOrthogonal();
 void CreateGridMatrixFromInput();
-std::vector<std::string> &SplitString(const std::string &s, char delim, std::vector<std::string> &elems);
 void ShowInformation(std::string message);
 void ShowFilledParameters();
 void WriteSummaryFile(std::string path, int argc, char** argv);
 
 
+//cudareconstruction.exe --rayThick 0.08 --rayRho 0.8 --rayEta 0.03 --rayDelta 0.3 --threshBestCost 0.3 --gridDims 100 100 100 --gridSpacing 0.0348 0.0391 0.0342 --gridOrigin -2.29 -2.24 -2.2 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C:\Dev\nda\TRG\DataSonia2 --outputGridFilename C:\Dev\nda\TRG\DataSonia2\output.vts
 //--verbose --rayThick 0.027 --rayRho 0.8 --rayEta 0.03 --rayDelta 0.063 --threshBestCost 0.14 --gridDims 400 400 400 --gridSpacing 0.007 0.009 0.008 --gridOrigin - 1.48 - 1.94 - 2.19 --gridVecX 1 0 0 --gridVecY 0 1 0 --gridVecZ 0 0 1 --dataFolder C : \Dev\nda\TRG\DATA\160428 - DM_ZNCC_ref_view_step_5_low_res --outputGridFilename C : \Dev\nda\TRG\DATA\160428 - DM_ZNCC_ref_view_step_5_low_res\output.vts
 //-----------------------------------------------------------------------------
 /* Main function */
@@ -132,10 +127,6 @@ int main(int argc, char ** argv)
 
   // Launch reconstruction process
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
-  if (noCuda)
-    cudaReconstructionFilter->UseCudaOff();
-  else
-    cudaReconstructionFilter->UseCudaOn();
   cudaReconstructionFilter->SetFilePathKRTD(krtGlobalFile.c_str());
   cudaReconstructionFilter->SetFilePathVTI(dmapGlobalFile.c_str());
   cudaReconstructionFilter->SetRayPotentialRho(rayPotentialRho);
@@ -230,7 +221,6 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map (default 0.14)");
   arg.AddArgument("--gridEnd", argT::MULTI_ARGUMENT, &g_gridEnd, "Define the end of the grid");
   arg.AddArgument("--contour", argT::SPACE_ARGUMENT, &contourValue, "Define the isocontour value when contour is extracted from reconstructionFilter (default 1.0)");
-  arg.AddBooleanArgument("--noCuda", &noCuda, "Use CPU");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information on console");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters (will be write on dataFolder)");
   arg.AddBooleanArgument("--forceCubicVoxel", &forceCubicVoxel, "Define if voxel have the same spacing on X, Y and Z (min of three spacing) Dimensions are recomputed");
@@ -370,20 +360,6 @@ void CreateGridMatrixFromInput()
 }
 
 //-----------------------------------------------------------------------------
-/* Split a string from a delimiter char and return a vector of extracted words */
-std::vector<std::string> &SplitString(const std::string &s, char delim,
-                                      std::vector<std::string> &elems)
-{
-  std::stringstream ss(s);
-  std::string item;
-  while (std::getline(ss, item, delim))
-    {
-    elems.push_back(item);
-    }
-  return elems;
-}
-
-//-----------------------------------------------------------------------------
 /* Show information on console if we are on verbose mode */
 void ShowInformation(std::string information)
 {
@@ -429,7 +405,6 @@ void ShowFilledParameters()
   std::cout << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
   std::cout << "--- Eta ray potential :       " << rayPotentialEta << std::endl;
   std::cout << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
-  std::cout << "--- Use cuda :                " << !noCuda << std::endl;
   std::cout << std::endl;
   std::cout << std::endl;
 }
@@ -479,7 +454,6 @@ void WriteSummaryFile(std::string path, int argc, char** argv)
   output << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
   output << "--- Eta ray potential :       " << rayPotentialEta << std::endl;
   output << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
-  output << "--- Use cuda :                " << !noCuda << std::endl;
   output << std::endl;
   output << "----------------------" << std::endl;
   output << "** TIME :" << std::endl;
