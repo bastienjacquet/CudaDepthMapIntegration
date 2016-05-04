@@ -154,7 +154,7 @@ int main(int argc, char ** argv)
 
       // Transform to pixel index
       int pixelPosition[2];
-      help::WorldToDepthMap(data->GetMatrixTR(), data->Get4MatrixK(), position, pixelPosition);
+      data->TransformWorldToDepthMapPosition(position, pixelPosition);
       // Test if pixel is inside depth map
       if (pixelPosition[0] < 0 || pixelPosition[1] < 0 ||
         pixelPosition[0] >= depthMapDimensions[0] ||
