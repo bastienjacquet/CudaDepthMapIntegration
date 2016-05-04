@@ -65,6 +65,7 @@ std::vector<double> g_gridVecX;
 std::vector<double> g_gridVecY;
 std::vector<double> g_gridVecZ;
 std::string g_outputGridFilename;
+std::string g_outputMeshFilename;
 std::string g_pathFolder; // Path to the folder which contains all data
 std::string g_depthMapContainer = "vtiList.txt"; // File which contains all path of depth map
 std::string g_KRTContainer = "kList.txt"; // File which contains all path of KRT matrix ofr each depth map
@@ -172,11 +173,20 @@ int main(int argc, char ** argv)
   transformFilter->Update();
 
 
-  ShowInformation("** Save output...");
+  ShowInformation("** Save mesh...");
   vtkNew<vtkXMLPolyDataWriter> writer;
-  writer->SetFileName(g_outputGridFilename.c_str());
+  writer->SetFileName(g_outputMeshFilename.c_str());
   writer->SetInputData(transformFilter->GetOutput());
   writer->Write();
+
+  ShowInformation("** Save volume...");
+  transformFilter->SetInputConnection(cudaReconstructionFilter->GetOutputPort());
+  transformFilter->Update();
+  vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
+  vtkNew<vtkXMLStructuredGridWriter> gridWriter;
+  gridWriter->SetFileName(g_outputGridFilename.c_str());
+  gridWriter->SetInputData(outputGrid);
+  gridWriter->Write();
 
 
   g_totalExecutionTime = (double)(clock() - start) / CLOCKS_PER_SEC;
@@ -208,7 +218,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--gridVecX", argT::MULTI_ARGUMENT, &g_gridVecX, "Input grid direction X (default 1 0 0)");
   arg.AddArgument("--gridVecY", argT::MULTI_ARGUMENT, &g_gridVecY, "Input grid direction Y (default 0 1 0)");
   arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Input grid direction Z (default 0 0 1)");
-  arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (.vtp) (required)");
+  arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (.vts) (required)");
   arg.AddArgument("--dataFolder", argT::SPACE_ARGUMENT, &g_pathFolder, "Folder which contains all data (required)");
   arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default vtiList.txt)");
   arg.AddArgument("--KRTFile", argT::SPACE_ARGUMENT, &g_KRTContainer, "File which contains all the KRTD path (default kList.txt)");
@@ -219,6 +229,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--threshBestCost", argT::SPACE_ARGUMENT, &thresholdBestCost, "Define threshold that will be applied on depth map (default 0.14)");
   arg.AddArgument("--gridEnd", argT::MULTI_ARGUMENT, &g_gridEnd, "Define the end of the grid");
   arg.AddArgument("--contour", argT::SPACE_ARGUMENT, &contourValue, "Define the isocontour value when contour is extracted from reconstructionFilter (default 1.0)");
+  arg.AddArgument("--outputMeshFilename", argT::SPACE_ARGUMENT, &g_outputMeshFilename, "Output mesh filename (.vtp) (required)");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information on console");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters (will be write on dataFolder)");
   arg.AddBooleanArgument("--forceCubicVoxel", &forceCubicVoxel, "Define if voxel have the same spacing on X, Y and Z (min of three spacing) Dimensions are recomputed");
@@ -235,7 +246,7 @@ bool ReadArguments(int argc, char ** argv)
     return false;
     }
 
-  if (g_outputGridFilename == "" || g_depthMapContainer == "" || g_KRTContainer == "" ||
+  if (g_outputGridFilename == "" || g_outputMeshFilename == "" || g_depthMapContainer == "" || g_KRTContainer == "" ||
       rayPotentialDelta < rayPotentialThick || rayPotentialEta < 0 || rayPotentialEta > 1)
     {
     std::cerr << "Error arguments." << std::endl;
@@ -264,10 +275,12 @@ bool ReadArguments(int argc, char ** argv)
     g_gridVecZ.push_back(1);
     }
 
-  std::string extension(".vtp");
-  if (g_outputGridFilename.find(extension) == std::string::npos)
+  std::string extensionMesh(".vtp");
+  std::string extensionVolume(".vts");
+  if (g_outputGridFilename.find(extensionVolume) == std::string::npos ||
+    g_outputMeshFilename.find(extensionMesh) == std::string::npos)
     {
-    std::cerr << "Error : Bad output extension, it has to be .vtp" << std::endl;
+    std::cerr << "Error : Bad output extension." << std::endl;
     return false;
     }
 
@@ -401,6 +414,11 @@ void ShowFilledParameters()
   std::cout << "--- Eta ray potential :       " << rayPotentialEta << std::endl;
   std::cout << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
   std::cout << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "** OTHER :" << std::endl;
+  std::cout << "----------------------" << std::endl;
+  std::cout << "--- Contour : " << contourValue << std::endl;
+  std::cout << std::endl;
   std::cout << std::endl;
 }
 
@@ -449,6 +467,11 @@ void WriteSummaryFile(std::string path, int argc, char** argv)
   output << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
   output << "--- Eta ray potential :       " << rayPotentialEta << std::endl;
   output << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
+  output << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** OTHER :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Contour : " << contourValue << std::endl;
   output << std::endl;
   output << "----------------------" << std::endl;
   output << "** TIME :" << std::endl;
