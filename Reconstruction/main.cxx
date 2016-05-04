@@ -81,7 +81,6 @@ bool forceCubicVoxel = false; // Force to set the voxel to have the same size on
 //-----------------------------------------------------------------------------
 // FILLED ATTRIBUTES
 //-----------------------------------------------------------------------------
-vtkMatrix4x4* g_gridMatrix;
 double g_reconstructionExecutionTime;
 double g_totalExecutionTime;
 
@@ -90,7 +89,7 @@ double g_totalExecutionTime;
 //-----------------------------------------------------------------------------
 bool ReadArguments(int argc, char ** argv);
 bool AreVectorsOrthogonal();
-void CreateGridMatrixFromInput();
+void CreateGridMatrixFromInput(vtkMatrix4x4* gridMatrix);
 void ShowInformation(std::string message);
 void ShowFilledParameters();
 void WriteSummaryFile(std::string path, int argc, char** argv);
@@ -113,7 +112,9 @@ int main(int argc, char ** argv)
   ShowFilledParameters();
 
   // Create grid matrix from VecXYZ
-  CreateGridMatrixFromInput();
+
+  vtkNew<vtkMatrix4x4> g_gridMatrix;
+  CreateGridMatrixFromInput(g_gridMatrix.Get());
 
   // Generate grid from arguments
   vtkNew<vtkImageData> grid;
@@ -135,7 +136,7 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetRayPotentialDelta(rayPotentialDelta);
   cudaReconstructionFilter->SetThresholdBestCost(thresholdBestCost);
   cudaReconstructionFilter->SetInputData(grid.Get());
-  cudaReconstructionFilter->SetGridMatrix(g_gridMatrix);
+  cudaReconstructionFilter->SetGridMatrix(g_gridMatrix.Get());
   cudaReconstructionFilter->Update();
 
   g_reconstructionExecutionTime = cudaReconstructionFilter->GetExecutionTime();
@@ -164,7 +165,7 @@ int main(int argc, char ** argv)
 
   ShowInformation("** Apply grid matrix to the reconstruction output...");
   vtkNew<vtkTransform> transform;
-  transform->SetMatrix(g_gridMatrix);
+  transform->SetMatrix(g_gridMatrix.Get());
   vtkNew<vtkTransformFilter> transformFilter;
   transformFilter->SetInputConnection(contourFilter->GetOutputPort());
   transformFilter->SetTransform(transform.Get());
@@ -185,9 +186,6 @@ int main(int argc, char ** argv)
     std::string filePath = g_pathFolder + "\\summary.txt";
     WriteSummaryFile(filePath, argc, argv);
     }
-
-  // Clean pointers
-  g_gridMatrix->Delete();
 
   ShowInformation("---END---");
 
@@ -339,9 +337,8 @@ bool AreVectorsOrthogonal()
 
 //-----------------------------------------------------------------------------
 /* Construct a vtkMatrix4x4 from grid vec X, Y and Z */
-void CreateGridMatrixFromInput()
+void CreateGridMatrixFromInput(vtkMatrix4x4* gridMatrix)
 {
-  vtkMatrix4x4* gridMatrix = vtkMatrix4x4::New();
   gridMatrix->Identity();
 
   // Fill matrix
@@ -354,8 +351,6 @@ void CreateGridMatrixFromInput()
   gridMatrix->SetElement(2, 0, g_gridVecZ[0]);
   gridMatrix->SetElement(2, 1, g_gridVecZ[1]);
   gridMatrix->SetElement(2, 2, g_gridVecZ[2]);
-
-  g_gridMatrix = gridMatrix;
 
 }
 
