@@ -31,9 +31,12 @@
 #define _RECONSTRUCTIONDATA_H_
 
 // VTK includes
-#include "vtkImageData.h"
-#include "vtkMatrix3x3.h"
-#include "vtkMatrix4x4.h"
+class vtkImageData;
+class vtkMatrix3x3;
+class vtkMatrix4x4;
+class vtkTransform;
+
+#include <string>
 
 class ReconstructionData
 {
@@ -42,29 +45,36 @@ public:
   ReconstructionData(std::string depthPath, std::string matrixPath);
   ~ReconstructionData();
 
+  // GETTERS
   int* GetDepthMapDimensions();
   void GetColorValue(int* pixelPosition, double rgb[3]);
-
   vtkImageData* GetDepthMap();
   vtkMatrix3x3* Get3MatrixK();
   vtkMatrix4x4* Get4MatrixK();
   vtkMatrix4x4* GetMatrixTR();
 
+  // SETTERS
   void SetDepthMap(vtkImageData* data);
   void SetMatrixK(vtkMatrix3x3* matrix);
   void SetMatrixTR(vtkMatrix4x4* matrix);
 
+  // FUNCTIONS
   void ApplyDepthThresholdFilter(double thresholdBestCost);
+  void TransformWorldToDepthMapPosition(const double* worldCoordinate, int pixelCoordinate[2]);
+
+  // STATIC FUNCTIONS
+  static void ReadDepthMap(std::string path, vtkImageData* out);
 
 protected:
-  // Functions
-  void ReadDepthMap(std::string path);
 
   // Attributes
   vtkImageData* DepthMap;
   vtkMatrix3x3* MatrixK;
   vtkMatrix4x4* Matrix4K;
   vtkMatrix4x4* MatrixTR;
+
+  vtkTransform* TransformWorldToCamera;
+  vtkTransform* TransformCameraToDepthMap;
 };
 
 #endif

@@ -34,8 +34,13 @@
 
 // VTK includes
 #include "vtkDoubleArray.h"
-#include "vtkUnsignedCharArray.h"
+#include "vtkImageData.h"
+#include "vtkMatrix3x3.h"
+#include "vtkMatrix4x4.h"
 #include "vtkPointData.h"
+#include "vtkSmartPointer.h"
+#include "vtkTransform.h"
+#include "vtkUnsignedCharArray.h"
 #include "vtkXMLImageDataReader.h"
 
 
@@ -50,15 +55,22 @@ ReconstructionData::ReconstructionData(std::string depthPath,
                                        std::string matrixPath)
 {
   // Read DEPTH MAP an fill this->DepthMap
-  this->ReadDepthMap(depthPath);
+  this->DepthMap = vtkImageData::New();
+  ReconstructionData::ReadDepthMap(depthPath, this->DepthMap);
+
+
+  this->TransformWorldToCamera = vtkTransform::New();
+  this->TransformCameraToDepthMap = vtkTransform::New();
 
   // Read KRTD FILE
-  vtkMatrix3x3* K = vtkMatrix3x3::New();
+  vtkNew<vtkMatrix3x3> K;
+  vtkNew<vtkMatrix4x4> RT;
   this->MatrixTR = vtkMatrix4x4::New();
-  help::ReadKrtdFile(matrixPath, K, this->MatrixTR);
-  // Set matrix K to  create matrix4x4 for K
-  this->SetMatrixK(K);
+  help::ReadKrtdFile(matrixPath, K.Get(), RT.Get());
 
+  // Set matrix K to  create matrix4x4 for K
+  this->SetMatrixK(K.Get());
+  this->SetMatrixTR(RT.Get());
 }
 
 ReconstructionData::~ReconstructionData()
@@ -150,35 +162,64 @@ void ReconstructionData::ApplyDepthThresholdFilter(double thresholdBestCost)
     }
 }
 
+void ReconstructionData::TransformWorldToDepthMapPosition(const double* worldCoordinate,
+                                                          int pixelCoordinate[2])
+{
+  double cameraCoordinate[3];
+  this->TransformWorldToCamera->TransformPoint(worldCoordinate, cameraCoordinate);
+  double depthMapCoordinate[3];
+  this->TransformCameraToDepthMap->TransformVector(cameraCoordinate, depthMapCoordinate);
+
+  depthMapCoordinate[0] = depthMapCoordinate[0] / depthMapCoordinate[2];
+  depthMapCoordinate[1] = depthMapCoordinate[1] / depthMapCoordinate[2];
+
+  pixelCoordinate[0] = std::round(depthMapCoordinate[0]);
+  pixelCoordinate[1] = std::round(depthMapCoordinate[1]);
+}
+
 void ReconstructionData::SetDepthMap(vtkImageData* data)
 {
+  if (this->DepthMap != nullptr)
+    this->DepthMap->Delete();
   this->DepthMap = data;
+  this->DepthMap->Register(0);
 }
 
 void ReconstructionData::SetMatrixK(vtkMatrix3x3* matrix)
 {
+  if (this->MatrixK != nullptr)
+    this->MatrixK->Delete();
   this->MatrixK = matrix;
+  this->MatrixK->Register(0);
+
+  if (this->Matrix4K != nullptr)
+    this->Matrix4K->Delete();
   this->Matrix4K = vtkMatrix4x4::New();
   this->Matrix4K->Identity();
   for (int i = 0; i < 3; i++)
-  {
-    for (int j = 0; j < 3; j++)
     {
+    for (int j = 0; j < 3; j++)
+      {
       this->Matrix4K->SetElement(i, j, this->MatrixK->GetElement(i, j));
+      }
     }
-  }
+
+  this->TransformCameraToDepthMap->SetMatrix(this->Matrix4K);
 }
 
 void ReconstructionData::SetMatrixTR(vtkMatrix4x4* matrix)
 {
+  if (this->MatrixTR != nullptr)
+    this->MatrixTR->Delete();
   this->MatrixTR = matrix;
+  this->MatrixTR->Register(0);
+  this->TransformWorldToCamera->SetMatrix(this->MatrixTR);
 }
 
-void ReconstructionData::ReadDepthMap(std::string path)
+void ReconstructionData::ReadDepthMap(std::string path, vtkImageData* out)
 {
-  vtkXMLImageDataReader* depthMapReader = vtkXMLImageDataReader::New();
+  vtkSmartPointer<vtkXMLImageDataReader> depthMapReader = vtkSmartPointer<vtkXMLImageDataReader>::New();
   depthMapReader->SetFileName(path.c_str());
   depthMapReader->Update();
-  this->DepthMap = depthMapReader->GetOutput();
-
+  out->ShallowCopy(depthMapReader->GetOutput());
 }

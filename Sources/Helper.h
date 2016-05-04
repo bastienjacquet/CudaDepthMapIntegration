@@ -138,28 +138,6 @@ namespace help
     return true;
   }
 
-  //----------------------------------------------------------------------------
-  // Description
-  // Transform world points into pixel position using KRTD matrix
-  static void WorldToDepthMap(vtkMatrix4x4* matrixRT, vtkMatrix4x4* matrixK,
-                              double* worldCoordinate, int pixelCoordinate[2])
-  {
-    vtkNew<vtkTransform> transformWorldToCamera;
-    transformWorldToCamera->SetMatrix(matrixRT);
-    vtkNew<vtkTransform> transformCameraToDepthMap;
-    transformCameraToDepthMap->SetMatrix(matrixK);
-
-    double cameraCoordinate[3];
-    transformWorldToCamera->TransformPoint(worldCoordinate, cameraCoordinate);
-    double depthMapCoordinate[3];
-    transformCameraToDepthMap->TransformVector(cameraCoordinate, depthMapCoordinate);
-
-    depthMapCoordinate[0] = depthMapCoordinate[0] / depthMapCoordinate[2];
-    depthMapCoordinate[1] = depthMapCoordinate[1] / depthMapCoordinate[2];
-
-    pixelCoordinate[0] = std::round(depthMapCoordinate[0]);
-    pixelCoordinate[1] = std::round(depthMapCoordinate[1]);
-  }
 
   //----------------------------------------------------------------------------
   // Description
