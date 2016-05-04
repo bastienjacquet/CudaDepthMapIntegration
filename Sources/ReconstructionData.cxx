@@ -53,6 +53,7 @@ ReconstructionData::ReconstructionData()
 
 ReconstructionData::ReconstructionData(std::string depthPath,
                                        std::string matrixPath)
+                                       :ReconstructionData()
 {
   // Read DEPTH MAP an fill this->DepthMap
   this->DepthMap = vtkImageData::New();
