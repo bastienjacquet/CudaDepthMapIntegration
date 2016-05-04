@@ -162,7 +162,7 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
   TVolumetric* output)
 {
   // Get voxel coordinate according to thread id
-  int voxelIndex[SizePoint3D] = { threadIdx.x, blockIdx.y, blockIdx.z };
+  int voxelIndex[SizePoint3D] = { (int)threadIdx.x, (int)blockIdx.y, (int)blockIdx.z };
 
   // Get the center of the voxel
   TypeCompute voxelCenterCoordinate[SizePoint3D];
