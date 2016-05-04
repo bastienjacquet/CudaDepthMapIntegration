@@ -38,8 +38,6 @@
 #include "vtkFiltersCoreModule.h" // For export macro
 #include "vtkImageAlgorithm.h"
 
-#include "ReconstructionData.h"
-
 #include <vector>
 
 class vtkDoubleArray;

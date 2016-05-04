@@ -29,6 +29,8 @@
 
 #include "vtkCudaReconstructionFilter.h"
 
+#include "ReconstructionData.h"
+
 #include "vtkCell.h"
 #include "vtkCellData.h"
 #include "vtkDataSet.h"
