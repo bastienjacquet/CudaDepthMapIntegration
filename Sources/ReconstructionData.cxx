@@ -66,6 +66,8 @@ ReconstructionData::ReconstructionData(std::string depthPath,
   vtkNew<vtkMatrix3x3> K;
   vtkNew<vtkMatrix4x4> RT;
   this->MatrixTR = vtkMatrix4x4::New();
+  this->MatrixK = vtkMatrix3x3::New();
+  this->Matrix4K = vtkMatrix4x4::New();
   help::ReadKrtdFile(matrixPath, K.Get(), RT.Get());
 
   // Set matrix K to  create matrix4x4 for K
