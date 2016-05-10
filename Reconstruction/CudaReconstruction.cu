@@ -209,7 +209,7 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
     return;
     }
   int gridId = computeVoxelIDGrid(voxelIndex);  // Get the distance between voxel and camera
-  TypeCompute realDepth = norm(voxelCenterCamera);
+  TypeCompute realDepth = voxelCenterCamera[2];
   TVolumetric newValue;
   rayPotential<TVolumetric>(realDepth, depth, newValue);
   // Update the value to the output
