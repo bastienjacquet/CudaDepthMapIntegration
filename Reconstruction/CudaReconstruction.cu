@@ -195,8 +195,8 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
 
   // Test if coordinate are inside depth map
   if (pixel[0] < 0 || pixel[1] < 0 || 
-    pixel[0] > c_depthMapDims.x - 1 ||
-    pixel[1] > c_depthMapDims.y - 1)
+    pixel[0] >= c_depthMapDims.x ||
+    pixel[1] >= c_depthMapDims.y )
     {
     return;
     }
