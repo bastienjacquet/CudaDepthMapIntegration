@@ -322,7 +322,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   const int nbVoxels = io_scalar->GetNumberOfTuples();
   int nbDepthMap = (int)vtiList.size();
 
-  std::cout << "START CUDA ON " << std::to_string(nbDepthMap) << " Depth map" << std::endl;
+  std::cout << "START CUDA ON " << nbDepthMap << " Depth map" << std::endl;
 
   // Transform vtkDoubleArray to table
   TVolumetric* h_outScalar = new TVolumetric[nbVoxels];

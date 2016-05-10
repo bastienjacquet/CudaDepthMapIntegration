@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.0)
 
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 project( Reconstruction )
 
 find_package(VTK
@@ -11,6 +14,7 @@ find_package(VTK
    vtkFiltersGeneral
    vtkIOLegacy
    vtkIOXML
+   vtkIOImage
    REQUIRED)
 
 find_package(CUDA REQUIRED)
