@@ -195,8 +195,8 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
 
   // Test if coordinate are inside depth map
   if (pixel[0] < 0 || pixel[1] < 0 || 
-    pixel[0] > c_depthMapDims.x - 1 ||
-    pixel[1] > c_depthMapDims.y - 1)
+    pixel[0] >= c_depthMapDims.x ||
+    pixel[1] >= c_depthMapDims.y )
     {
     return;
     }
@@ -209,7 +209,7 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
     return;
     }
   int gridId = computeVoxelIDGrid(voxelIndex);  // Get the distance between voxel and camera
-  TypeCompute realDepth = norm(voxelCenterCamera);
+  TypeCompute realDepth = voxelCenterCamera[2];
   TVolumetric newValue;
   rayPotential<TVolumetric>(realDepth, depth, newValue);
   // Update the value to the output
@@ -322,7 +322,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   const int nbVoxels = io_scalar->GetNumberOfTuples();
   int nbDepthMap = (int)vtiList.size();
 
-  std::cout << "START CUDA ON " << std::to_string(nbDepthMap) << " Depth map" << std::endl;
+  std::cout << "START CUDA ON " << nbDepthMap << " Depth map" << std::endl;
 
   // Transform vtkDoubleArray to table
   TVolumetric* h_outScalar = new TVolumetric[nbVoxels];

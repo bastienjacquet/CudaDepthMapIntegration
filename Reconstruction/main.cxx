@@ -44,9 +44,11 @@
 #include "vtkTransformFilter.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkXMLImageDataReader.h"
+#include "vtkXMLImageDataWriter.h"
 #include "vtkXMLStructuredGridReader.h"
 #include "vtkXMLStructuredGridWriter.h"
 #include "vtkXMLPolyDataWriter.h"
+#include "vtkMetaImageWriter.h"
 
 #include <vtksys/CommandLineArguments.hxx>
 #include <vtksys/SystemTools.hxx>
@@ -124,8 +126,8 @@ int main(int argc, char ** argv)
   grid->SetOrigin(&g_gridOrigin[0]);
 
   ShowInformation("** Launch reconstruction...");
-  std::string dmapGlobalFile = g_pathFolder + "\\" + g_depthMapContainer;
-  std::string krtGlobalFile = g_pathFolder + "\\" + g_KRTContainer;
+  std::string dmapGlobalFile = g_pathFolder + "/" + g_depthMapContainer;
+  std::string krtGlobalFile = g_pathFolder + "/" + g_KRTContainer;
 
   // Launch reconstruction process
   vtkNew<vtkCudaReconstructionFilter> cudaReconstructionFilter;
@@ -150,6 +152,13 @@ int main(int argc, char ** argv)
   transformCellDataToPointData->SetInputData(cudaReconstructionFilter->GetOutput());
   transformCellDataToPointData->PassCellDataOn();
   transformCellDataToPointData->Update();
+  transformCellDataToPointData->GetOutput()->GetPointData()->SetActiveScalars("reconstruction_scalar");
+
+  vtkNew<vtkMetaImageWriter> mIWriter;
+  mIWriter->SetFileName("meta_image_volume.mha");
+  mIWriter->SetInputData(transformCellDataToPointData->GetOutput());
+  mIWriter->SetCompression(true);
+  mIWriter->Write();
 
 
   vtkImageData* out = transformCellDataToPointData->GetImageDataOutput();
