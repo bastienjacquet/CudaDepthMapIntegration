@@ -92,7 +92,6 @@ double g_totalExecutionTime;
 //-----------------------------------------------------------------------------
 bool ReadArguments(int argc, char ** argv);
 bool AreVectorsOrthogonal();
-void CreateGridMatrixFromInput(vtkMatrix4x4* gridMatrix);
 void ShowInformation(std::string message);
 void ShowFilledParameters();
 void WriteSummaryFile(std::string path, int argc, char** argv);
@@ -116,8 +115,23 @@ int main(int argc, char ** argv)
 
   // Create grid matrix from VecXYZ
 
-  vtkNew<vtkMatrix4x4> g_gridMatrix;
-  CreateGridMatrixFromInput(g_gridMatrix.Get());
+  // Fill matrix
+  vtkNew<vtkMatrix4x4> gridMatrix;
+  gridMatrix->Identity();
+  gridMatrix->SetElement(0, 0, g_gridVecX[0]);  gridMatrix->SetElement(1, 0, g_gridVecY[0]);  gridMatrix->SetElement(2, 0, g_gridVecZ[0]);
+  gridMatrix->SetElement(0, 1, g_gridVecX[1]);  gridMatrix->SetElement(1, 1, g_gridVecY[1]);  gridMatrix->SetElement(2, 1, g_gridVecZ[1]);
+  gridMatrix->SetElement(0, 2, g_gridVecX[2]);  gridMatrix->SetElement(1, 2, g_gridVecY[2]);  gridMatrix->SetElement(2, 2, g_gridVecZ[2]);
+  gridMatrix->SetElement(3, 0, g_gridOrigin[0]);
+  gridMatrix->SetElement(3, 1, g_gridOrigin[1]);
+  gridMatrix->SetElement(3, 2, g_gridOrigin[2]);
+
+  vtkNew<vtkMatrix4x4> indexToCoordMatrix;
+  indexToCoordMatrix->Identity();
+  indexToCoordMatrix->SetElement(0, 0, g_gridSpacing[0]);
+  indexToCoordMatrix->SetElement(1, 1, g_gridSpacing[1]);
+  indexToCoordMatrix->SetElement(2, 2, g_gridSpacing[2]);
+  vtkNew<vtkMatrix4x4> indexToWorldMatrix;
+  vtkMatrix4x4::Multiply4x4(gridMatrix.Get(), indexToCoordMatrix.Get(), indexToWorldMatrix.Get());
 
   // Generate grid from arguments
   vtkNew<vtkImageData> grid;
@@ -139,7 +153,7 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetRayPotentialDelta(rayPotentialDelta);
   cudaReconstructionFilter->SetThresholdBestCost(thresholdBestCost);
   cudaReconstructionFilter->SetInputData(grid.Get());
-  cudaReconstructionFilter->SetGridMatrix(g_gridMatrix.Get());
+  cudaReconstructionFilter->SetGridMatrix(indexToWorldMatrix.Get());
   cudaReconstructionFilter->Update();
 
   g_reconstructionExecutionTime = cudaReconstructionFilter->GetExecutionTime();
@@ -175,7 +189,7 @@ int main(int argc, char ** argv)
 
   ShowInformation("** Apply grid matrix to the reconstruction output...");
   vtkNew<vtkTransform> transform;
-  transform->SetMatrix(g_gridMatrix.Get());
+  transform->SetMatrix(indexToWorldMatrix.Get());
   vtkNew<vtkTransformFilter> transformFilter;
   transformFilter->SetInputConnection(contourFilter->GetOutputPort());
   transformFilter->SetTransform(transform.Get());
@@ -241,20 +255,32 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--outputMeshFilename", argT::SPACE_ARGUMENT, &g_outputMeshFilename, "Output mesh filename (.vtp) (required)");
   arg.AddBooleanArgument("--verbose", &verbose, "Use to display debug information on console");
   arg.AddBooleanArgument("--summary", &writeSummaryFile, "Use to write a summary file which contains command line and all used parameters (will be write on dataFolder)");
-  arg.AddBooleanArgument("--forceCubicVoxel", &forceCubicVoxel, "Define if voxel have the same spacing on X, Y and Z (min of three spacing) Dimensions are recomputed");
+  arg.AddBooleanArgument("--forceCubicVoxel", &forceCubicVoxel, "Define if voxel have the same spacing on X, Y and Z (min of three spacing)");
   arg.AddBooleanArgument("--help", &help, "Print this help message");
 
   int result = arg.Parse();
   if (!result || help)
     {
     std::cerr << arg.GetHelp();
-    std::cerr << "Command line examples for using --forceCubic or not :" << std::endl;
-    std::cerr << "***  WITH --forceCubic : gridOrig, gridEnd, gridSpacing" << std::endl;
-    std::cerr << "OR" << std::endl;
-    std::cerr << "*** WITHOUT --forceCubic : gridOrig, gridEnd, gridDims" << std::endl;
     return false;
     }
 
+  // User can't set both spacing and dimensions
+  if (g_gridSpacing.size() != 0 && g_gridDims.size() != 0)
+    {
+    std::cerr << "Error : Spacing and dimensions can't be both set" << std::endl;
+    std::cerr << arg.GetHelp();
+    return false;
+    }
+
+  // If only one value is set for dimensions, we set the same dimension for Y and Z
+  if (g_gridDims.size() == 1)
+    {
+    g_gridDims.push_back(g_gridDims[0]);
+    g_gridDims.push_back(g_gridDims[0]);
+    }
+
+  // Test if arguments are missing
   if (g_outputGridFilename == "" || g_outputMeshFilename == "" || g_depthMapContainer == "" || g_KRTContainer == "" ||
       rayPotentialDelta < rayPotentialThick || rayPotentialEta < 0 || rayPotentialEta > 1)
     {
@@ -265,23 +291,17 @@ bool ReadArguments(int argc, char ** argv)
 
   if (g_gridVecX.size() == 0)
     {
-    g_gridVecX.push_back(1);
-    g_gridVecX.push_back(0);
-    g_gridVecX.push_back(0);
+    g_gridVecX.push_back(1);    g_gridVecX.push_back(0);    g_gridVecX.push_back(0);
     }
 
   if (g_gridVecY.size() == 0)
     {
-    g_gridVecY.push_back(0);
-    g_gridVecY.push_back(1);
-    g_gridVecY.push_back(0);
+    g_gridVecY.push_back(0);    g_gridVecY.push_back(1);    g_gridVecY.push_back(0);
     }
 
   if (g_gridVecZ.size() == 0)
     {
-    g_gridVecZ.push_back(0);
-    g_gridVecZ.push_back(0);
-    g_gridVecZ.push_back(1);
+    g_gridVecZ.push_back(0);    g_gridVecZ.push_back(0);    g_gridVecZ.push_back(1);
     }
 
   std::string extensionMesh(".vtp");
@@ -300,41 +320,37 @@ bool ReadArguments(int argc, char ** argv)
     }
 
 
-  // Get the real size on each axis
+  // Get the requested grid size on each axis
   double sizeX = g_gridEnd[0] - g_gridOrigin[0];
   double sizeY = g_gridEnd[1] - g_gridOrigin[1];
   double sizeZ = g_gridEnd[2] - g_gridOrigin[2];
+
+  // Compute the spacing according to the dimensions
+  if (g_gridSpacing.size() == 0)
+    {
+    g_gridSpacing.resize(3);
+    g_gridSpacing[0] = sizeX / (double)g_gridDims[0];
+    g_gridSpacing[1] = sizeY / (double)g_gridDims[1];
+    g_gridSpacing[2] = sizeZ / (double)g_gridDims[2];
+    }
+
+  // Compute the dimensions according to the spacing
+  if (g_gridDims.size() == 0)
+    {
+    g_gridDims.resize(3);
+    // Compute the dimension on each axis
+    g_gridDims[0] = (int)(sizeX / g_gridSpacing[0]);
+    g_gridDims[1] = (int)(sizeY / g_gridSpacing[1]);
+    g_gridDims[2] = (int)(sizeZ / g_gridSpacing[2]);
+    }
 
   if (forceCubicVoxel)
     {
     // Get the minimum spacing
     std::vector<double>::iterator iter = std::min_element(std::begin(g_gridSpacing), std::end(g_gridSpacing));
     double min = *iter;
-
-    if (g_gridDims.size() == 0)
-      {
-      g_gridDims.resize(3);
-      }
-
-    // Compute the dimension on each axis
-    g_gridDims[0] = (int)(sizeX / min);
-    g_gridDims[1] = (int)(sizeY / min);
-    g_gridDims[2] = (int)(sizeZ / min);
-
     for (int i = 0; i < 3; i++)
       g_gridSpacing[i] = min;
-    }
-  else
-    {
-    if (g_gridSpacing.size() == 0)
-      {
-      g_gridSpacing.resize(3);
-      }
-
-    // Compute the spacing according to orig, end and dimension of grid
-    g_gridSpacing[0] = sizeX / (double)g_gridDims[0];
-    g_gridSpacing[1] = sizeY / (double)g_gridDims[1];
-    g_gridSpacing[2] = sizeZ / (double)g_gridDims[2];
     }
 
   return true;
@@ -355,25 +371,6 @@ bool AreVectorsOrthogonal()
   if (XY == 0 && YZ == 0 && ZX == 0)
     return true;
   return false;
-}
-
-//-----------------------------------------------------------------------------
-/* Construct a vtkMatrix4x4 from grid vec X, Y and Z */
-void CreateGridMatrixFromInput(vtkMatrix4x4* gridMatrix)
-{
-  gridMatrix->Identity();
-
-  // Fill matrix
-  gridMatrix->SetElement(0, 0, g_gridVecX[0]);
-  gridMatrix->SetElement(0, 1, g_gridVecX[1]);
-  gridMatrix->SetElement(0, 2, g_gridVecX[2]);
-  gridMatrix->SetElement(1, 0, g_gridVecY[0]);
-  gridMatrix->SetElement(1, 1, g_gridVecY[1]);
-  gridMatrix->SetElement(1, 2, g_gridVecY[2]);
-  gridMatrix->SetElement(2, 0, g_gridVecZ[0]);
-  gridMatrix->SetElement(2, 1, g_gridVecZ[1]);
-  gridMatrix->SetElement(2, 2, g_gridVecZ[2]);
-
 }
 
 //-----------------------------------------------------------------------------
