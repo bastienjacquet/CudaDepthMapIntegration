@@ -390,6 +390,8 @@ void ShowFilledParameters()
   if (!verbose)
     return;
 
+  double avgVoxelDim = 1.0/3.0 * (g_gridSpacing[0]+g_gridSpacing[1]+g_gridSpacing[2]);
+
   std::cout << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "** OUTPUT GRID :" << std::endl;
@@ -430,10 +432,10 @@ void ShowFilledParameters()
   std::cout << "----------------------" << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "----------------------" << std::endl;
-  std::cout << "--- Thickness ray potential : " << rayPotentialThick << std::endl;
+  std::cout << "--- Thickness ray potential : " << rayPotentialThick << " ( " << 1*(rayPotentialThick/avgVoxelDim) << " ) "  << std::endl;
   std::cout << "--- Rho ray potential :       " << rayPotentialRho << std::endl;
   std::cout << "--- Eta ray potential :       " << rayPotentialEta << std::endl;
-  std::cout << "--- Delta ray potential :     " << rayPotentialDelta << std::endl;
+  std::cout << "--- Delta ray potential :     " << rayPotentialDelta << " ( " << 1*(rayPotentialDelta/avgVoxelDim) << " ) " << std::endl;
   std::cout << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "** OTHER :" << std::endl;
