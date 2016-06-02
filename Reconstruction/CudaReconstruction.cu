@@ -53,7 +53,9 @@ typedef double TypeCompute;
 // ----------------------------------------------------------------------------
 /* Define texture and constants */
 __constant__ TypeCompute c_gridMatrix[SizeMat4x4]; // Matrix to transpose from basic axis to output volume axis
+__constant__ TypeCompute c_gridOrig[SizePoint3D]; // Origin of the output volume
 __constant__ int3 c_gridDims; // Dimensions of the output volume
+__constant__ TypeCompute c_gridSpacing[SizeDim3D]; // Spacing of the output volume
 __constant__ int2 c_depthMapDims; // Dimensions of all depths map
 __constant__ TypeCompute c_rayPotentialThick; // Thickness threshold for the ray potential function
 __constant__ TypeCompute c_rayPotentialRho; // Rho at the Y axis for the ray potential function
@@ -71,6 +73,13 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
     fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
     if (abort) exit(code);
   }
+}
+
+__device__ void computeVoxelCenter(int voxelCoordinate[SizePoint3D], TypeCompute output[SizePoint3D])
+{
+output[0] = c_gridOrig[0] + (voxelCoordinate[0] + 0.5) * c_gridSpacing[0];
+output[1] = c_gridOrig[1] + (voxelCoordinate[1] + 0.5) * c_gridSpacing[1];
+output[2] = c_gridOrig[2] + (voxelCoordinate[2] + 0.5) * c_gridSpacing[2];
 }
 
 
@@ -152,9 +161,11 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
 {
   // Get voxel coordinate according to thread id
   int voxelIndex[SizePoint3D] = { (int)threadIdx.x, (int)blockIdx.y, (int)blockIdx.z };
-  TypeCompute voxelIndexTypeCompute[SizePoint3D] = { (TypeCompute)voxelIndex[0], (TypeCompute)voxelIndex[1], (TypeCompute)voxelIndex[2] };
+
+  TypeCompute voxelCenterCoordinate[SizePoint3D];
+  computeVoxelCenter(voxelIndex, voxelCenterCoordinate);
   TypeCompute voxelCenter[SizePoint3D];
-  transformFrom4Matrix(c_gridMatrix, voxelIndexTypeCompute, voxelCenter);
+  transformFrom4Matrix(c_gridMatrix, voxelCenterCoordinate, voxelCenter);
 
   // Transform voxel center from real coord to camera coords
   TypeCompute voxelCenterCamera[SizePoint3D];
@@ -257,6 +268,8 @@ __host__ void doubleTableToVtkDoubleArray(TVolumetric* table, vtkDoubleArray* ou
 /* Initialize cuda constant */
 void CudaInitialize(vtkMatrix4x4* i_gridMatrix, // Matrix to transform grid voxel to real coordinates
                 int h_gridDims[SizeDim3D], // Dimensions of the output volume
+                double h_gridOrig[SizePoint3D], // Origin of the output volume
+                double h_gridSpacing[SizeDim3D], // Spacing of the output volume
                 double h_rayPThick,
                 double h_rayPRho,
                 double h_rayPEta,
@@ -268,6 +281,8 @@ void CudaInitialize(vtkMatrix4x4* i_gridMatrix, // Matrix to transform grid voxe
 
   cudaMemcpyToSymbol(c_gridMatrix, h_gridMatrix, SizeMat4x4 * sizeof(TypeCompute));
   cudaMemcpyToSymbol(c_gridDims, h_gridDims, SizeDim3D * sizeof(int));
+  cudaMemcpyToSymbol(c_gridOrig, h_gridOrig, SizePoint3D * sizeof(TypeCompute));
+  cudaMemcpyToSymbol(c_gridSpacing, h_gridSpacing, SizeDim3D * sizeof(TypeCompute));
   cudaMemcpyToSymbol(c_rayPotentialThick, &h_rayPThick, sizeof(TypeCompute));
   cudaMemcpyToSymbol(c_rayPotentialRho, &h_rayPRho, sizeof(TypeCompute));
   cudaMemcpyToSymbol(c_rayPotentialEta, &h_rayPEta, sizeof(TypeCompute));

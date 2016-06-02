@@ -63,7 +63,7 @@ vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatr
 
 
 void CudaInitialize(vtkMatrix4x4* i_gridMatrix, int h_gridDims[3],
-  double h_rayPThick, double h_rayPRho,
+  double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick, double h_rayPRho,
   double h_rayPEta, double h_rayPDelta, int h_depthMapDim[2]);
 
 template <typename TVolumetric>
@@ -168,7 +168,7 @@ int vtkCudaReconstructionFilter::Compute(int gridDims[3], double gridOrig[3],
   int* depthMapGrid = data0.GetDepthMap()->GetDimensions();
 
   // Initialize Cuda constant
-  CudaInitialize(this->GridMatrix, gridDims,
+  CudaInitialize(this->GridMatrix, gridDims, gridOrig, gridSpacing,
     this->RayPotentialThickness, this->RayPotentialRho,
     this->RayPotentialEta, this->RayPotentialDelta, depthMapGrid);
 

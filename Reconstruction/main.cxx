@@ -92,6 +92,7 @@ double g_totalExecutionTime;
 //-----------------------------------------------------------------------------
 bool ReadArguments(int argc, char ** argv);
 bool AreVectorsOrthogonal();
+void CreateGridMatrixFromInput(vtkMatrix4x4* gridMatrix);
 void ShowInformation(std::string message);
 void ShowFilledParameters();
 void WriteSummaryFile(std::string path, int argc, char** argv);
@@ -114,24 +115,8 @@ int main(int argc, char ** argv)
   ShowFilledParameters();
 
   // Create grid matrix from VecXYZ
-
-  // Fill matrix
-  vtkNew<vtkMatrix4x4> gridMatrix;
-  gridMatrix->Identity();
-  gridMatrix->SetElement(0, 0, g_gridVecX[0]);  gridMatrix->SetElement(1, 0, g_gridVecY[0]);  gridMatrix->SetElement(2, 0, g_gridVecZ[0]);
-  gridMatrix->SetElement(0, 1, g_gridVecX[1]);  gridMatrix->SetElement(1, 1, g_gridVecY[1]);  gridMatrix->SetElement(2, 1, g_gridVecZ[1]);
-  gridMatrix->SetElement(0, 2, g_gridVecX[2]);  gridMatrix->SetElement(1, 2, g_gridVecY[2]);  gridMatrix->SetElement(2, 2, g_gridVecZ[2]);
-  gridMatrix->SetElement(3, 0, g_gridOrigin[0]);
-  gridMatrix->SetElement(3, 1, g_gridOrigin[1]);
-  gridMatrix->SetElement(3, 2, g_gridOrigin[2]);
-
-  vtkNew<vtkMatrix4x4> indexToCoordMatrix;
-  indexToCoordMatrix->Identity();
-  indexToCoordMatrix->SetElement(0, 0, g_gridSpacing[0]);
-  indexToCoordMatrix->SetElement(1, 1, g_gridSpacing[1]);
-  indexToCoordMatrix->SetElement(2, 2, g_gridSpacing[2]);
-  vtkNew<vtkMatrix4x4> indexToWorldMatrix;
-  vtkMatrix4x4::Multiply4x4(gridMatrix.Get(), indexToCoordMatrix.Get(), indexToWorldMatrix.Get());
+  vtkNew<vtkMatrix4x4> g_gridMatrix;
+  CreateGridMatrixFromInput(g_gridMatrix.Get());
 
   // Generate grid from arguments
   vtkNew<vtkImageData> grid;
@@ -153,7 +138,7 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetRayPotentialDelta(rayPotentialDelta);
   cudaReconstructionFilter->SetThresholdBestCost(thresholdBestCost);
   cudaReconstructionFilter->SetInputData(grid.Get());
-  cudaReconstructionFilter->SetGridMatrix(indexToWorldMatrix.Get());
+  cudaReconstructionFilter->SetGridMatrix(g_gridMatrix.Get());
   cudaReconstructionFilter->Update();
 
   g_reconstructionExecutionTime = cudaReconstructionFilter->GetExecutionTime();
@@ -189,7 +174,7 @@ int main(int argc, char ** argv)
 
   ShowInformation("** Apply grid matrix to the reconstruction output...");
   vtkNew<vtkTransform> transform;
-  transform->SetMatrix(indexToWorldMatrix.Get());
+  transform->SetMatrix(g_gridMatrix.Get());
   vtkNew<vtkTransformFilter> transformFilter;
   transformFilter->SetInputConnection(contourFilter->GetOutputPort());
   transformFilter->SetTransform(transform.Get());
@@ -354,6 +339,22 @@ bool ReadArguments(int argc, char ** argv)
     }
 
   return true;
+}
+
+void CreateGridMatrixFromInput(vtkMatrix4x4* gridMatrix)
+{
+  gridMatrix->Identity();
+
+  // Fill matrix
+  gridMatrix->SetElement(0, 0, g_gridVecX[0]);
+  gridMatrix->SetElement(0, 1, g_gridVecX[1]);
+  gridMatrix->SetElement(0, 2, g_gridVecX[2]);
+  gridMatrix->SetElement(1, 0, g_gridVecY[0]);
+  gridMatrix->SetElement(1, 1, g_gridVecY[1]);
+  gridMatrix->SetElement(1, 2, g_gridVecY[2]);
+  gridMatrix->SetElement(2, 0, g_gridVecZ[0]);
+  gridMatrix->SetElement(2, 1, g_gridVecZ[1]);
+  gridMatrix->SetElement(2, 2, g_gridVecZ[2]);
 }
 
 //-----------------------------------------------------------------------------
