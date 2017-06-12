@@ -155,6 +155,14 @@ __device__ int computeVoxelIDDepth(int coordinates[SizePoint3D])
   matrixTR : matrixTR
   output : double table that will be filled at the end of function
 */
+
+// TODO
+// Pass as argument two matrix :
+// *** KRTGridC (K*RT*GridMatrix*C)
+// Transform (i,j,k) to depth map coordinate
+// Replace line A-B-C-D
+// *** RTGridC
+// Replace A-B-C, used to replace E
 template<typename TVolumetric>
 __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4x4], TypeCompute matrixTR[SizeMat4x4],
   TVolumetric* output)
@@ -164,14 +172,16 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
 
   TypeCompute voxelCenterCoordinate[SizePoint3D];
   computeVoxelCenter(voxelIndex, voxelCenterCoordinate);
+
+  // B. Transform voxel from local grid to rotated grid with real coord
   TypeCompute voxelCenter[SizePoint3D];
   transformFrom4Matrix(c_gridMatrix, voxelCenterCoordinate, voxelCenter);
 
-  // Transform voxel center from real coord to camera coords
+  // C. Transform voxel center from real coord to camera coords
   TypeCompute voxelCenterCamera[SizePoint3D];
   transformFrom4Matrix(matrixTR, voxelCenter, voxelCenterCamera);
 
-  // Transform voxel center from camera coords to depth map homogeneous coords
+  // D. Transform voxel center from camera coords to depth map homogeneous coords
   TypeCompute voxelCenterHomogen[SizePoint3D];
   transformFrom4Matrix(matrixK, voxelCenterCamera, voxelCenterHomogen);
   if (voxelCenterHomogen[2] < 0)
@@ -204,6 +214,7 @@ __global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4
     return;
     }
   int gridId = computeVoxelIDGrid(voxelIndex);  // Get the distance between voxel and camera
+  // E.
   TypeCompute realDepth = voxelCenterCamera[2];
   TVolumetric newValue;
   rayPotential<TVolumetric>(realDepth, depth, newValue);
