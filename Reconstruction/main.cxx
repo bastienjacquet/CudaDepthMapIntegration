@@ -33,8 +33,10 @@
 #include "vtkContourFilter.h"
 #include "vtkImageData.h"
 #include "vtkMath.h"
+#include "vtkMathUtilities.h"
 #include "vtkMatrix3x3.h"
 #include "vtkMatrix4x4.h"
+#include "vtkMetaImageWriter.h"
 #include "vtkNew.h"
 #include "vtkPiecewiseFunction.h"
 #include "vtkPolyData.h"
@@ -48,7 +50,6 @@
 #include "vtkXMLStructuredGridReader.h"
 #include "vtkXMLStructuredGridWriter.h"
 #include "vtkXMLPolyDataWriter.h"
-#include "vtkMetaImageWriter.h"
 
 #include <vtksys/CommandLineArguments.hxx>
 #include <vtksys/SystemTools.hxx>
@@ -369,8 +370,14 @@ bool AreVectorsOrthogonal()
   double YZ = vtkMath::Dot(Y, Z);
   double ZX = vtkMath::Dot(Z, X);
 
-  if (XY == 0 && YZ == 0 && ZX == 0)
+  double epsilon = 10e-6;
+  if (vtkMathUtilities::FuzzyCompare(XY, 0.0, epsilon)
+  && vtkMathUtilities::FuzzyCompare(YZ, 0.0, epsilon)
+  && vtkMathUtilities::FuzzyCompare(ZX, 0.0, epsilon))
+  {
     return true;
+  }
+
   return false;
 }
 
