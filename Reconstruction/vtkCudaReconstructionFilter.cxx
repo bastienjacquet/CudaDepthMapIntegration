@@ -64,7 +64,7 @@ vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatr
 
 void CudaInitialize(vtkMatrix4x4* i_gridMatrix, int h_gridDims[3],
   double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick, double h_rayPRho,
-  double h_rayPEta, double h_rayPDelta, int h_depthMapDim[2]);
+  double h_rayPEta, double h_rayPDelta, int h_depthMapDim[2], int h_tilingDims[3]);
 
 template <typename TVolumetric>
 bool ProcessDepthMap(std::vector<std::string> vtiList,std::vector<std::string> krtdList,
@@ -141,7 +141,7 @@ int vtkCudaReconstructionFilter::RequestData(
     return 0;
     }
 
-  this->Compute(gridDims, gridOrig, gridSpacing, outScalar.Get());
+  this->Compute(gridDims, gridOrig, gridSpacing, this->TilingDims, outScalar.Get());
 
 
   clock_t end = clock();
@@ -153,7 +153,7 @@ int vtkCudaReconstructionFilter::RequestData(
 
 //----------------------------------------------------------------------------
 int vtkCudaReconstructionFilter::Compute(int gridDims[3], double gridOrig[3],
-  double gridSpacing[3], vtkDoubleArray* outScalar)
+  double gridSpacing[3], int tilingDims[3], vtkDoubleArray* outScalar)
 {
   std::vector<std::string> vtiList = help::ExtractAllFilePath(this->FilePathVTI);
   std::vector<std::string> krtdList = help::ExtractAllFilePath(this->FilePathKRTD);
@@ -170,7 +170,7 @@ int vtkCudaReconstructionFilter::Compute(int gridDims[3], double gridOrig[3],
   // Initialize Cuda constant
   CudaInitialize(this->GridMatrix, gridDims, gridOrig, gridSpacing,
     this->RayPotentialThickness, this->RayPotentialRho,
-    this->RayPotentialEta, this->RayPotentialDelta, depthMapGrid);
+    this->RayPotentialEta, this->RayPotentialDelta, depthMapGrid, tilingDims);
 
   bool result = ProcessDepthMap<double>(vtiList, krtdList, this->ThresholdBestCost,
                                 outScalar);

@@ -75,6 +75,9 @@ public:
   // Entire path to access file that contains all vti file names
   // vti files have to be in the same folder as FilePathVTI
   vtkSetStringMacro(FilePathVTI);
+  // Description :
+  // Define voxel tiling in each dimension
+  vtkSetVector3Macro(TilingDims, int);
 
   //Description :
   // Get the execution time when update is launch (in seconds)
@@ -99,7 +102,7 @@ protected:
 
 
   int Compute(int gridDims[3], double gridOrig[3],
-              double gridSpacing[3], vtkDoubleArray* outScalar);
+              double gridSpacing[3], int tilingDims[3], vtkDoubleArray* outScalar);
 
 
   vtkMatrix4x4 *GridMatrix;
@@ -111,6 +114,7 @@ protected:
   double ExecutionTime;
   const char* FilePathKRTD;
   const char* FilePathVTI;
+  int TilingDims[3];
 
 private:
   vtkCudaReconstructionFilter(const vtkCudaReconstructionFilter&);  // Not implemented.

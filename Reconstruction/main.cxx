@@ -67,6 +67,7 @@ std::vector<double> g_gridEnd;
 std::vector<double> g_gridVecX;
 std::vector<double> g_gridVecY;
 std::vector<double> g_gridVecZ;
+std::vector<int> g_tilingDims;
 std::string g_outputGridFilename;
 std::string g_outputMeshFilename;
 std::string g_pathFolder; // Path to the folder which contains all data
@@ -140,12 +141,12 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetThresholdBestCost(thresholdBestCost);
   cudaReconstructionFilter->SetInputData(grid.Get());
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix.Get());
+  cudaReconstructionFilter->SetTilingDims(g_tilingDims.data());
   cudaReconstructionFilter->Update();
 
   g_reconstructionExecutionTime = cudaReconstructionFilter->GetExecutionTime();
   std::string message = "Reconstruction execution time : " + std::to_string(g_reconstructionExecutionTime) + " s";
   ShowInformation(message);
-
 
   ShowInformation("** Transform cell data to point data...");
   vtkNew<vtkCellDataToPointData> transformCellDataToPointData;
@@ -153,13 +154,13 @@ int main(int argc, char ** argv)
   transformCellDataToPointData->PassCellDataOn();
   transformCellDataToPointData->Update();
   transformCellDataToPointData->GetOutput()->GetPointData()->SetActiveScalars("reconstruction_scalar");
-
+  /*
   vtkNew<vtkMetaImageWriter> mIWriter;
   mIWriter->SetFileName("meta_image_volume.mha");
   mIWriter->SetInputData(transformCellDataToPointData->GetOutput());
   mIWriter->SetCompression(true);
   mIWriter->Write();
-
+  */
 
   vtkImageData* out = transformCellDataToPointData->GetImageDataOutput();
   out->GetPointData()->SetActiveScalars("reconstruction_scalar");
@@ -181,7 +182,7 @@ int main(int argc, char ** argv)
   transformFilter->SetTransform(transform.Get());
   transformFilter->Update();
 
-
+std::cout << "Actual memory size : " << transformFilter->GetOutput()->GetActualMemorySize() << std::endl;
   ShowInformation("** Save mesh...");
   vtkNew<vtkXMLPolyDataWriter> writer;
   writer->SetFileName(g_outputMeshFilename.c_str());
@@ -227,6 +228,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--gridVecX", argT::MULTI_ARGUMENT, &g_gridVecX, "Input grid direction X (default 1 0 0)");
   arg.AddArgument("--gridVecY", argT::MULTI_ARGUMENT, &g_gridVecY, "Input grid direction Y (default 0 1 0)");
   arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Input grid direction Z (default 0 0 1)");
+  arg.AddArgument("--tilingDims", argT::MULTI_ARGUMENT, &g_tilingDims, "Voxel tiling (default 80% of free GPU memory)");
   arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (.vts) (required)");
   arg.AddArgument("--dataFolder", argT::SPACE_ARGUMENT, &g_pathFolder, "Folder which contains all data (required)");
   arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default vtiList.txt)");
@@ -329,6 +331,32 @@ bool ReadArguments(int argc, char ** argv)
     g_gridDims[1] = (int)(sizeY / g_gridSpacing[1]);
     g_gridDims[2] = (int)(sizeZ / g_gridSpacing[2]);
     }
+
+  // If only one value is set for tiling, we set the same tiling for Y and Z
+  if (g_tilingDims.size() == 1)
+  {
+    g_tilingDims.push_back(g_tilingDims[0]);
+    g_tilingDims.push_back(g_tilingDims[0]);
+  }
+  else
+  {
+    // Tiling will be calculated at runtime
+    if (g_tilingDims.size() != 3)
+    {
+      g_tilingDims.resize(3);
+      g_tilingDims[0] = 0;
+      g_tilingDims[1] = 0;
+      g_tilingDims[2] = 0;
+    }
+  }
+  // Tiling cannot be bigger than grid dimensions
+  if (g_tilingDims[0] * g_tilingDims[1] * g_tilingDims[2]
+  > (g_gridDims[0] - 1)*(g_gridDims[1] - 1)*(g_gridDims[2] - 1))
+  {
+    g_tilingDims[0] = g_gridDims[0] - 1;
+    g_tilingDims[1] = g_gridDims[1] - 1;
+    g_tilingDims[2] = g_gridDims[2] - 1;
+  }
 
   if (forceCubicVoxel)
     {

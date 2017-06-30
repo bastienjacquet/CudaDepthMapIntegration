@@ -57,11 +57,14 @@ __constant__ TypeCompute c_gridOrig[SizePoint3D]; // Origin of the output volume
 __constant__ int3 c_gridDims; // Dimensions of the output volume
 __constant__ TypeCompute c_gridSpacing[SizeDim3D]; // Spacing of the output volume
 __constant__ int2 c_depthMapDims; // Dimensions of all depths map
+__constant__ int3 c_tileDims; // Dimensions of the tiles
+__constant__ int c_nbVoxels; // Total number of voxels
 __constant__ TypeCompute c_rayPotentialThick; // Thickness threshold for the ray potential function
 __constant__ TypeCompute c_rayPotentialRho; // Rho at the Y axis for the ray potential function
 __constant__ TypeCompute c_rayPotentialEta;
 __constant__ TypeCompute c_rayPotentialDelta;
 int ch_gridDims[3];
+int h_tileDims[3];
 
 // ----------------------------------------------------------------------------
 /* Macro called to catch cuda error when cuda functions is called */
@@ -123,15 +126,95 @@ __device__ void rayPotential(TypeCompute realDistance, TypeCompute depthMapDista
 /* Compute the voxel Id on a 1D table according to its 3D coordinates
   coordinates : 3D coordinates
 */
-__device__ int computeVoxelIDGrid(int coordinates[SizePoint3D])
+int computeVoxelIDGrid(int coordinates[SizePoint3D])
 {
-  int dimX = c_gridDims.x - 1;
-  int dimY = c_gridDims.y - 1;
+  int dimX = ch_gridDims[0] - 1;
+  int dimY = ch_gridDims[1] - 1;
   int i = coordinates[0];
   int j = coordinates[1];
   int k = coordinates[2];
   return (k*dimY + j)*dimX + i;
 }
+
+// ----------------------------------------------------------------------------
+/* Compute the voxel's 3D coordinates in tile according to its ID on a 1D table
+  gridID : 1D coordinate
+  coordinates : 3D coordinates
+*/
+void computeVoxel3DCoords(int gridId, int tileDims[3], int coordinates[SizePoint3D])
+{
+  coordinates[2] = gridId;
+  coordinates[1] = (coordinates[2]) % (tileDims[1] * tileDims[0]);
+  coordinates[0] = (coordinates[1]) % (tileDims[0]);
+
+  coordinates[2] -= coordinates[1];
+  coordinates[2] /= (tileDims[1] * tileDims[0]);
+  coordinates[1] -= coordinates[0];
+  coordinates[1] /= (tileDims[0]);
+}
+
+// ----------------------------------------------------------------------------
+/* Compute the tiles' origins as 3D coordinates according to their size and
+ * the size of the voxel grid
+  nbTilesXYZ : number of tiles in each dimension
+  tileOrigin : 3D coordinates
+*/
+void computeTileOrigins(int nbTilesXYZ[3], int tileOrigin[][3])
+{
+  int tileOffset[3] = {0,0,0};
+
+  for (int x = 0; x < nbTilesXYZ[0]; x++)
+  {
+    if (tileOffset[0] > ch_gridDims[0] - 2)
+    {
+      tileOffset[0] = 0;
+    }
+
+    for (int y = 0; y < nbTilesXYZ[1]; y++)
+    {
+      if (tileOffset[1] > ch_gridDims[1] - 2)
+      {
+        tileOffset[1] = 0;
+      }
+
+      for (int z = 0; z < nbTilesXYZ[2]; z++)
+      {
+        if (tileOffset[2] > ch_gridDims[2] - 2)
+        {
+          tileOffset[2] = 0;
+        }
+
+        int id = z + nbTilesXYZ[2]*(y + nbTilesXYZ[1]*x);
+        tileOrigin[id][0] = tileOffset[0];
+        tileOrigin[id][1] = tileOffset[1];
+        tileOrigin[id][2] = tileOffset[2];
+
+        std::cout<<"tileOrigin["<<id<<"] : "<<tileOrigin[id][0]<<" "<<tileOrigin[id][1]<<" "<<tileOrigin[id][2]<<std::endl;
+
+        tileOffset[2] += h_tileDims[2];
+      }
+
+      tileOffset[1] += h_tileDims[1];
+    }
+
+    tileOffset[0] += h_tileDims[0];
+  }
+}
+
+// ----------------------------------------------------------------------------
+/* Compute the voxel relative Id on a 1D table according to its 3D coordinates
+  coordinates : 3D coordinates
+*/
+__device__ int computeVoxelRelativeIDGrid(int coordinates[SizePoint3D])
+{
+  int dimX = c_tileDims.x;
+  int dimY = c_tileDims.y;
+  int i = coordinates[0];
+  int j = coordinates[1];
+  int k = coordinates[2];
+  return (k*dimY + j)*dimX + i;
+}
+
 
 // ----------------------------------------------------------------------------
 /* Compute the pixel Id on a 1D table according to its 3D coordinates
@@ -156,59 +239,77 @@ __device__ int computeVoxelIDDepth(int coordinates[SizePoint3D])
   output : double table that will be filled at the end of function
 */
 template<typename TVolumetric>
-__global__ void depthMapKernel(TypeCompute* depths, TypeCompute matrixK[SizeMat4x4], TypeCompute matrixTR[SizeMat4x4],
-  TVolumetric* output)
+__global__ void depthMapKernel(int d_tileOrigin[3], TypeCompute* depths, TypeCompute matrixK[SizeMat4x4],
+  TypeCompute matrixTR[SizeMat4x4], TVolumetric* output)
 {
-  // Get voxel coordinate according to thread id
-  int voxelIndex[SizePoint3D] = { (int)threadIdx.x, (int)blockIdx.y, (int)blockIdx.z };
+  // Get relative voxel coordinate of the voxel according to thread id
+  //int voxelIndexRelative[SizePoint3D] = { (int)(threadIdx.x + blockIdx.x * blockDim.x), (int)blockIdx.y, (int)blockIdx.z };
+  int voxelIndexRelative[SizePoint3D] = { (int)(threadIdx.x), (int)blockIdx.y, (int)blockIdx.z };
+  int gridIdRelative = computeVoxelRelativeIDGrid(voxelIndexRelative);
 
-  TypeCompute voxelCenterCoordinate[SizePoint3D];
-  computeVoxelCenter(voxelIndex, voxelCenterCoordinate);
-  TypeCompute voxelCenter[SizePoint3D];
-  transformFrom4Matrix(c_gridMatrix, voxelCenterCoordinate, voxelCenter);
+  // Get true voxel coordinate
+  //int gridId = tileStart + gridIdRelative;
+  int voxelIndex[SizePoint3D];
+  //printf("(%d, %d, %d)\n", d_tileOrigin[0], d_tileOrigin[1], d_tileOrigin[2]);
+  voxelIndex[0] = d_tileOrigin[0] + voxelIndexRelative[0];
+  voxelIndex[1] = d_tileOrigin[1] + voxelIndexRelative[1];
+  voxelIndex[2] = d_tileOrigin[2] + voxelIndexRelative[2];
 
-  // Transform voxel center from real coord to camera coords
-  TypeCompute voxelCenterCamera[SizePoint3D];
-  transformFrom4Matrix(matrixTR, voxelCenter, voxelCenterCamera);
+  // Don't process out of bounds voxels
+  if  (voxelIndex[0] < c_gridDims.x - 1
+  && voxelIndex[1] < c_gridDims.y - 1
+  && voxelIndex[2] < c_gridDims.z - 1)
+  {
+    //printf("(%d, %d, %d)",voxelIndex[0],voxelIndex[1],voxelIndex[2]);
+    //atomicAdd(d_count, 1);
+    TypeCompute voxelCenterCoordinate[SizePoint3D];
+    computeVoxelCenter(voxelIndex, voxelCenterCoordinate);
+    TypeCompute voxelCenter[SizePoint3D];
+    transformFrom4Matrix(c_gridMatrix, voxelCenterCoordinate, voxelCenter);
 
-  // Transform voxel center from camera coords to depth map homogeneous coords
-  TypeCompute voxelCenterHomogen[SizePoint3D];
-  transformFrom4Matrix(matrixK, voxelCenterCamera, voxelCenterHomogen);
-  if (voxelCenterHomogen[2] < 0)
-    {
-    return;
-    }
-  // Get voxel center on depth map coord
-  TypeCompute voxelCenterDepthMap[2];
-  voxelCenterDepthMap[0] = voxelCenterHomogen[0] / voxelCenterHomogen[2];
-  voxelCenterDepthMap[1] = voxelCenterHomogen[1] / voxelCenterHomogen[2];
-  // Get real pixel position (approximation)
-  int pixel[SizePoint3D];
-  pixel[0] = round(voxelCenterDepthMap[0]);
-  pixel[1] = round(voxelCenterDepthMap[1]);
-  pixel[2] = 0;
+    // Transform voxel center from real coord to camera coords
+    TypeCompute voxelCenterCamera[SizePoint3D];
+    transformFrom4Matrix(matrixTR, voxelCenter, voxelCenterCamera);
 
-  // Test if coordinate are inside depth map
-  if (pixel[0] < 0 || pixel[1] < 0 || 
-    pixel[0] >= c_depthMapDims.x ||
-    pixel[1] >= c_depthMapDims.y )
-    {
-    return;
-    }
+    // Transform voxel center from camera coords to depth map homogeneous coords
+    TypeCompute voxelCenterHomogen[SizePoint3D];
+    transformFrom4Matrix(matrixK, voxelCenterCamera, voxelCenterHomogen);
+    if (voxelCenterHomogen[2] < 0)
+      {
+      return;
+      }
+    // Get voxel center on depth map coord
+    TypeCompute voxelCenterDepthMap[2];
+    voxelCenterDepthMap[0] = voxelCenterHomogen[0] / voxelCenterHomogen[2];
+    voxelCenterDepthMap[1] = voxelCenterHomogen[1] / voxelCenterHomogen[2];
+    // Get real pixel position (approximation)
+    int pixel[SizePoint3D];
+    pixel[0] = round(voxelCenterDepthMap[0]);
+    pixel[1] = round(voxelCenterDepthMap[1]);
+    pixel[2] = 0;
 
-  // Compute the ID on depthmap values according to pixel position and depth map dimensions
-  int depthMapId = computeVoxelIDDepth(pixel);
-  TypeCompute depth = depths[depthMapId];
-  if (depth == -1)
-    {
-    return;
-    }
-  int gridId = computeVoxelIDGrid(voxelIndex);  // Get the distance between voxel and camera
-  TypeCompute realDepth = voxelCenterCamera[2];
-  TVolumetric newValue;
-  rayPotential<TVolumetric>(realDepth, depth, newValue);
-  // Update the value to the output
-  output[gridId] += newValue;
+    // Test if coordinate are inside depth map
+    if (pixel[0] < 0 || pixel[1] < 0 ||
+      pixel[0] >= c_depthMapDims.x ||
+      pixel[1] >= c_depthMapDims.y )
+      {
+      return;
+      }
+
+    // Com  // Compute the tiles' origins 3D coordinatespute the ID on depthmap values according to pixel position and depth map dimensions
+    int depthMapId = computeVoxelIDDepth(pixel);
+    TypeCompute depth = depths[depthMapId];
+    if (depth == -1)
+      {
+      return;
+      }
+
+    TypeCompute realDepth = voxelCenterCamera[2];
+    TVolumetric newValue;
+    rayPotential<TVolumetric>(realDepth, depth, newValue);
+    // Update the value to the output
+    output[gridIdRelative] += newValue;
+  }
 }
 
 
@@ -274,8 +375,10 @@ void CudaInitialize(vtkMatrix4x4* i_gridMatrix, // Matrix to transform grid voxe
                 double h_rayPRho,
                 double h_rayPEta,
                 double h_rayPDelta,
-                int h_depthMapDims[2])
+                int h_depthMapDims[2],
+                int h_tilingDims[SizeDim3D])
 {
+
   TypeCompute* h_gridMatrix = new TypeCompute[SizeMat4x4];
   vtkMatrixToTypeComputeTable(i_gridMatrix, h_gridMatrix);
 
@@ -293,8 +396,17 @@ void CudaInitialize(vtkMatrix4x4* i_gridMatrix, // Matrix to transform grid voxe
   ch_gridDims[1] = h_gridDims[1];
   ch_gridDims[2] = h_gridDims[2];
 
+  h_tileDims[0] = h_tilingDims[0];
+  h_tileDims[1] = h_tilingDims[1];
+  h_tileDims[2] = h_tilingDims[2];
+
   // Clean memory
   delete(h_gridMatrix);
+
+  size_t freeMemory, totalMemory;
+  cudaMemGetInfo(&freeMemory, &totalMemory);
+  std::cout << "Free nb after init : " << totalMemory/sizeof(double) << ", total : " << totalMemory/sizeof(double) << std::endl << std::endl;
+
 }
 
 // ----------------------------------------------------------------------------
@@ -315,36 +427,101 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   ReconstructionData* data = new ReconstructionData(vtiList[0], krtdList[0]);
   const int nbPixelOnDepthMap = data->GetDepthMap()->GetNumberOfPoints();
   const int nbVoxels = io_scalar->GetNumberOfTuples();
-  int nbDepthMap = (int)vtiList.size();
+  CudaErrorCheck(cudaMemcpyToSymbol(c_nbVoxels, &nbVoxels, sizeof(int)));
+  const int nbDepthMap = (int)vtiList.size();
 
-  std::cout << "START CUDA ON " << nbDepthMap << " Depth map" << std::endl;
-
-  // Transform vtkDoubleArray to table
-  TVolumetric* h_outScalar = new TVolumetric[nbVoxels];
-  vtkDoubleArrayToTable<TVolumetric>(io_scalar, h_outScalar);
-  TVolumetric* d_outScalar;
-  CudaErrorCheck(cudaMalloc((void**)&d_outScalar, nbVoxels * sizeof(TVolumetric)));
-  CudaErrorCheck(cudaMemcpy(d_outScalar, h_outScalar, nbVoxels * sizeof(TVolumetric), cudaMemcpyHostToDevice));
-
-  // Organize threads into blocks and grids
-  dim3 dimBlock(ch_gridDims[0] - 1, 1, 1); // nb threads on each block
-  dim3 dimGrid(1, ch_gridDims[1] - 1, ch_gridDims[2] - 1); // nb blocks on a grid
+  std::cout << "START CUDA ON " << nbDepthMap << " Depth maps" << std::endl;
 
   // Create device data from host value
   TypeCompute *d_depthMap, *d_matrixK, *d_matrixRT;
   CudaErrorCheck(cudaMalloc((void**)&d_depthMap, nbPixelOnDepthMap * sizeof(TypeCompute)));
   CudaErrorCheck(cudaMalloc((void**)&d_matrixK, SizeMat4x4 * sizeof(TypeCompute)));
   CudaErrorCheck(cudaMalloc((void**)&d_matrixRT, SizeMat4x4 * sizeof(TypeCompute)));
+  std::cout << "Size depth map : "<< nbPixelOnDepthMap * sizeof(TypeCompute)+SizeMat4x4 * sizeof(TypeCompute)+SizeMat4x4 * sizeof(TypeCompute) << std::endl;
 
   TypeCompute* h_depthMap = new TypeCompute[nbPixelOnDepthMap];
   TypeCompute* h_matrixK = new TypeCompute[SizeMat4x4];
   TypeCompute* h_matrixRT = new TypeCompute[SizeMat4x4];
 
-  for (int i = 0; i < nbDepthMap; i++)
-    {
-    std::cout << "\r" << (100 * i) / nbDepthMap << " %" << std::flush;
+  size_t freeMemory, totalMemory;
 
-    ReconstructionData data(vtiList[i], krtdList[i]);
+  // Runtime calculated tiling
+  if (h_tileDims[0] == 0 && h_tileDims[1] == 0 && h_tileDims[2] == 0)
+  {
+    // Use free GPU memory to deduce voxel tiling
+    CudaErrorCheck(cudaMemGetInfo(&freeMemory, &totalMemory));
+    int usagePercent = 80;
+    double freeBytes = double(usagePercent*freeMemory)/(100*sizeof(TVolumetric));
+    std::cout << "80% of free memory : " << freeBytes << std::endl << std::endl;
+
+    h_tileDims[0] = ch_gridDims[0] - 1;
+    h_tileDims[1] = ch_gridDims[1] - 1;
+
+    // Make sure that a voxel tile fits the GPU memory
+    if (nbVoxels > freeBytes)
+    {
+      h_tileDims[2] = vtkMath::Ceil(freeBytes / (h_tileDims[0] * h_tileDims[1]));
+    }
+    else
+    {
+      h_tileDims[2] = ch_gridDims[2] - 1;
+    }
+  }
+  cudaMemcpyToSymbol(c_tileDims, h_tileDims, 3 * sizeof(int));
+
+  int nbTilesXYZ[3];
+  // Compute the numbers of tiles needed to fill each dimension
+  for (int i = 0; i < 3; i++)
+  {
+    nbTilesXYZ[i] = vtkMath::Ceil(double(ch_gridDims[i] - 1) / (h_tileDims[i]));
+  }
+  std::cout<<"Tiling XYZ : "<<nbTilesXYZ[0]<<" "<<nbTilesXYZ[1]<<" "<<nbTilesXYZ[2]<<std::endl;
+
+  // Define tiling dimensions
+  const int nbVoxelsTile = (h_tileDims[0])*(h_tileDims[1])*(h_tileDims[2]);
+  const int nbTiles = nbTilesXYZ[0] * nbTilesXYZ[1] * nbTilesXYZ[2];
+
+  int tileOrigin[nbTiles][3];
+  computeTileOrigins(nbTilesXYZ, tileOrigin);
+  int* d_tileOrigin;
+  CudaErrorCheck(cudaMalloc((void**)&d_tileOrigin, 3 * sizeof(int)));
+
+  // Allocate the tile
+  TVolumetric* h_outTile = new TVolumetric[nbVoxelsTile];
+  TVolumetric* d_outTile;
+  CudaErrorCheck(cudaMalloc((void**)&d_outTile, nbVoxelsTile * sizeof(TVolumetric)));
+  CudaErrorCheck(cudaMemset(d_outTile, 0, nbVoxelsTile * sizeof(TVolumetric)));
+
+  std::cout << "Tile : " << h_tileDims[0] << "x" << h_tileDims[1] << "x" << h_tileDims[2] << std::endl;
+  cudaMemGetInfo(&freeMemory, &totalMemory);
+  std::cout << "Nb voxels per tile : " << nbVoxelsTile << std::endl;
+  std::cout << "Free nb after tiling : " << freeMemory/sizeof(TVolumetric) << std::endl << std::endl;
+
+  // Organize threads into blocks and grids
+  dim3 dimBlock(h_tileDims[0], 1, 1); // nb threads on each block
+  dim3 dimGrid(1, h_tileDims[1], h_tileDims[2]); // nb blocks on a grid
+
+  // Transform vtkDoubleArray to table
+  TVolumetric* h_outScalar = new TVolumetric[nbVoxels];
+  vtkDoubleArrayToTable<TVolumetric>(io_scalar, h_outScalar);
+
+  /*
+  int* h_count = new int(0);
+  int* d_count;
+  CudaErrorCheck(cudaMalloc((void**)&d_count, sizeof(int)));
+  CudaErrorCheck(cudaMemcpy(d_count, h_count, sizeof(int), cudaMemcpyHostToDevice));
+  */
+  // Process the tiles
+  for (int i = 0; i < nbTiles; i++)
+  {
+    // Reset the device voxel tile to 0s
+    CudaErrorCheck(cudaMemset(d_outTile, 0, nbVoxelsTile * sizeof(TVolumetric)));
+
+    CudaErrorCheck(cudaMemcpy(d_tileOrigin, tileOrigin[i], 3 * sizeof(int), cudaMemcpyHostToDevice));
+
+    std::cout << "\r" << (100 * i) / nbTiles << " %" << std::flush;
+
+    ReconstructionData data(vtiList[0], krtdList[0]);
     data.ApplyDepthThresholdFilter(thresholdBestCost);
 
     // Get data and transform its properties to atomic type
@@ -352,27 +529,77 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
     vtkMatrixToTypeComputeTable(data.Get4MatrixK(), h_matrixK);
     vtkMatrixToTypeComputeTable(data.GetMatrixTR(), h_matrixRT);
 
-    // Wait that all threads have finished
-    CudaErrorCheck(cudaDeviceSynchronize());
+    for (int j = 0; j < nbDepthMap; j++)
+    //for (int j = 0; j < 1; j++)
+    {
+      //std::cout << "\r\t" << (100 * j) / nbDepthMap << " %" << std::flush;
+      //std::cout<<std::endl<<"(i,j) = "<<i<<" "<<j<<std::endl;
+      CudaErrorCheck(cudaMemcpy(d_depthMap, h_depthMap, nbPixelOnDepthMap * sizeof(TypeCompute), cudaMemcpyHostToDevice));
+      CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
+      CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
 
-    CudaErrorCheck(cudaMemcpy(d_depthMap, h_depthMap, nbPixelOnDepthMap * sizeof(TypeCompute), cudaMemcpyHostToDevice));
-    CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
-    CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
+      // run code into device
+      depthMapKernel<TVolumetric> << < dimGrid, dimBlock >> >(d_tileOrigin, d_depthMap, d_matrixK, d_matrixRT, d_outTile);
 
-    // run code into device
-    depthMapKernel<TVolumetric> << < dimGrid, dimBlock >> >(d_depthMap, d_matrixK, d_matrixRT, d_outScalar);
+      // Prepare depthmap data for next transfer
+      if(j < nbDepthMap - 1)
+      {
+        ReconstructionData data(vtiList[j+1], krtdList[j+1]);
+        data.ApplyDepthThresholdFilter(thresholdBestCost);
+
+        // Get data and transform its properties to atomic type
+        vtkImageDataToTable(data.GetDepthMap(), h_depthMap);
+        vtkMatrixToTypeComputeTable(data.Get4MatrixK(), h_matrixK);
+        vtkMatrixToTypeComputeTable(data.GetMatrixTR(), h_matrixRT);
+      }
+
+      // nb of voxels processed
+      /*
+      CudaErrorCheck(cudaDeviceSynchronize());
+      CudaErrorCheck(cudaMemcpy(h_count, d_count, sizeof(int), cudaMemcpyDeviceToHost));
+      std::cout<<"\n"<<(*h_count)<<"\n";
+      *h_count=0;
+      CudaErrorCheck(cudaMemcpy(d_count, h_count, sizeof(int), cudaMemcpyHostToDevice));
+      */
 
     }
 
-  // Transfer data from device to host
-  cudaMemcpy(h_outScalar, d_outScalar, nbVoxels * sizeof(TVolumetric), cudaMemcpyDeviceToHost);
+    // Wait that all threads have finished
+    CudaErrorCheck(cudaDeviceSynchronize());
+
+    // Transfer tile data from device in host memory
+    CudaErrorCheck(cudaMemcpy(h_outTile, d_outTile, nbVoxelsTile * sizeof(TVolumetric), cudaMemcpyDeviceToHost));
+
+    // Copy data from tile to output double array
+    for (int k = 0; k < nbVoxelsTile; k++)
+    {
+      int voxelIndexRelative[SizePoint3D];
+      computeVoxel3DCoords(k, h_tileDims, voxelIndexRelative);
+      //std::cout<<"\t relative : "<<voxelIndexRelative[0]<<" "<<voxelIndexRelative[1]<<" "<<voxelIndexRelative[2]<<std::endl;
+      int voxelIndex[SizePoint3D];
+      voxelIndex[0] = tileOrigin[i][0] + voxelIndexRelative[0];
+      voxelIndex[1] = tileOrigin[i][1] + voxelIndexRelative[1];
+      voxelIndex[2] = tileOrigin[i][2] + voxelIndexRelative[2];
+      //std::cout<<"\t absolute : "<<voxelIndex[0]<<" "<<voxelIndex[1]<<" "<<voxelIndex[2]<<std::endl;
+      if  (voxelIndex[0] < ch_gridDims[0] - 1
+      && voxelIndex[1] < ch_gridDims[1] - 1
+      && voxelIndex[2] < ch_gridDims[2] - 1)
+      {
+        int gridId = computeVoxelIDGrid(voxelIndex);
+        h_outScalar[gridId] = h_outTile[k];
+        //std::cout<<"\t gridId : "<<gridId<<std::endl;
+      }
+    }
+
+  }
 
   // Transfer host data to output
   doubleTableToVtkDoubleArray<TVolumetric>(h_outScalar, io_scalar);
 
   // Clean memory
   delete(h_outScalar);
-  cudaFree(d_outScalar);
+  delete(h_outTile);
+  cudaFree(d_outTile);
   cudaFree(d_depthMap);
   cudaFree(d_matrixK);
   cudaFree(d_matrixRT);
