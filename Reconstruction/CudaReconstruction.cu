@@ -165,7 +165,7 @@ void computeTileOrigins(int nbTilesXYZ[3], int tileOrigin[][3])
 
   for (int x = 0; x < nbTilesXYZ[0]; x++)
   {
-    if (tileOffset[0] > ch_gridDims[0] - 2)
+  if (tileOffset[0] > ch_gridDims[0] - 2)
     {
       tileOffset[0] = 0;
     }
@@ -403,10 +403,6 @@ void CudaInitialize(vtkMatrix4x4* i_gridMatrix, // Matrix to transform grid voxe
   // Clean memory
   delete(h_gridMatrix);
 
-  size_t freeMemory, totalMemory;
-  cudaMemGetInfo(&freeMemory, &totalMemory);
-  std::cout << "Free nb after init : " << totalMemory/sizeof(double) << ", total : " << totalMemory/sizeof(double) << std::endl << std::endl;
-
 }
 
 // ----------------------------------------------------------------------------
@@ -432,12 +428,12 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
 
   std::cout << "START CUDA ON " << nbDepthMap << " Depth maps" << std::endl;
 
-  // Create device data from host value
+  // Create depthmap device data from host value
   TypeCompute *d_depthMap, *d_matrixK, *d_matrixRT;
   CudaErrorCheck(cudaMalloc((void**)&d_depthMap, nbPixelOnDepthMap * sizeof(TypeCompute)));
   CudaErrorCheck(cudaMalloc((void**)&d_matrixK, SizeMat4x4 * sizeof(TypeCompute)));
   CudaErrorCheck(cudaMalloc((void**)&d_matrixRT, SizeMat4x4 * sizeof(TypeCompute)));
-  std::cout << "Size depth map : "<< nbPixelOnDepthMap * sizeof(TypeCompute)+SizeMat4x4 * sizeof(TypeCompute)+SizeMat4x4 * sizeof(TypeCompute) << std::endl;
+  //std::cout << "Size depth map : "<< nbPixelOnDepthMap * sizeof(TypeCompute)+SizeMat4x4 * sizeof(TypeCompute)+SizeMat4x4 * sizeof(TypeCompute) << std::endl;
 
   TypeCompute* h_depthMap = new TypeCompute[nbPixelOnDepthMap];
   TypeCompute* h_matrixK = new TypeCompute[SizeMat4x4];
@@ -451,7 +447,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
     // Use free GPU memory to deduce voxel tiling
     CudaErrorCheck(cudaMemGetInfo(&freeMemory, &totalMemory));
     int usagePercent = 80;
-    double freeBytes = double(usagePercent*freeMemory)/(100*sizeof(TVolumetric));
+    double freeBytes = double(usagePercent*freeMemory) / (100*sizeof(TVolumetric));
     std::cout << "80% of free memory : " << freeBytes << std::endl << std::endl;
 
     h_tileDims[0] = ch_gridDims[0] - 1;
@@ -467,7 +463,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
       h_tileDims[2] = ch_gridDims[2] - 1;
     }
   }
-  cudaMemcpyToSymbol(c_tileDims, h_tileDims, 3 * sizeof(int));
+  CudaErrorCheck(cudaMemcpyToSymbol(c_tileDims, h_tileDims, 3 * sizeof(int)));
 
   int nbTilesXYZ[3];
   // Compute the numbers of tiles needed to fill each dimension
@@ -475,26 +471,26 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   {
     nbTilesXYZ[i] = vtkMath::Ceil(double(ch_gridDims[i] - 1) / (h_tileDims[i]));
   }
-  std::cout<<"Tiling XYZ : "<<nbTilesXYZ[0]<<" "<<nbTilesXYZ[1]<<" "<<nbTilesXYZ[2]<<std::endl;
+  std::cout << "Tiling X : " << nbTilesXYZ[0] << ", Y : " << nbTilesXYZ[1]
+  << ", Z : " << nbTilesXYZ[2] << std::endl;
 
   // Define tiling dimensions
-  const int nbVoxelsTile = (h_tileDims[0])*(h_tileDims[1])*(h_tileDims[2]);
+  const int nbVoxelsTile = h_tileDims[0] * h_tileDims[1] * h_tileDims[2];
   const int nbTiles = nbTilesXYZ[0] * nbTilesXYZ[1] * nbTilesXYZ[2];
 
+  // Compute and allocate tile information
   int tileOrigin[nbTiles][3];
   computeTileOrigins(nbTilesXYZ, tileOrigin);
   int* d_tileOrigin;
   CudaErrorCheck(cudaMalloc((void**)&d_tileOrigin, 3 * sizeof(int)));
 
-  // Allocate the tile
   TVolumetric* h_outTile = new TVolumetric[nbVoxelsTile];
   TVolumetric* d_outTile;
   CudaErrorCheck(cudaMalloc((void**)&d_outTile, nbVoxelsTile * sizeof(TVolumetric)));
   CudaErrorCheck(cudaMemset(d_outTile, 0, nbVoxelsTile * sizeof(TVolumetric)));
 
   std::cout << "Tile : " << h_tileDims[0] << "x" << h_tileDims[1] << "x" << h_tileDims[2] << std::endl;
-  cudaMemGetInfo(&freeMemory, &totalMemory);
-  std::cout << "Nb voxels per tile : " << nbVoxelsTile << std::endl;
+  CudaErrorCheck(cudaMemGetInfo(&freeMemory, &totalMemory));
   std::cout << "Free nb after tiling : " << freeMemory/sizeof(TVolumetric) << std::endl << std::endl;
 
   // Organize threads into blocks and grids
@@ -530,10 +526,8 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
     vtkMatrixToTypeComputeTable(data.GetMatrixTR(), h_matrixRT);
 
     for (int j = 0; j < nbDepthMap; j++)
-    //for (int j = 0; j < 1; j++)
     {
       //std::cout << "\r\t" << (100 * j) / nbDepthMap << " %" << std::flush;
-      //std::cout<<std::endl<<"(i,j) = "<<i<<" "<<j<<std::endl;
       CudaErrorCheck(cudaMemcpy(d_depthMap, h_depthMap, nbPixelOnDepthMap * sizeof(TypeCompute), cudaMemcpyHostToDevice));
       CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
       CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
@@ -542,7 +536,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
       depthMapKernel<TVolumetric> << < dimGrid, dimBlock >> >(d_tileOrigin, d_depthMap, d_matrixK, d_matrixRT, d_outTile);
 
       // Prepare depthmap data for next transfer
-      if(j < nbDepthMap - 1)
+      if (j < nbDepthMap - 1)
       {
         ReconstructionData data(vtiList[j+1], krtdList[j+1]);
         data.ApplyDepthThresholdFilter(thresholdBestCost);
@@ -561,7 +555,6 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
       *h_count=0;
       CudaErrorCheck(cudaMemcpy(d_count, h_count, sizeof(int), cudaMemcpyHostToDevice));
       */
-
     }
 
     // Wait that all threads have finished
@@ -581,7 +574,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
       voxelIndex[1] = tileOrigin[i][1] + voxelIndexRelative[1];
       voxelIndex[2] = tileOrigin[i][2] + voxelIndexRelative[2];
       //std::cout<<"\t absolute : "<<voxelIndex[0]<<" "<<voxelIndex[1]<<" "<<voxelIndex[2]<<std::endl;
-      if  (voxelIndex[0] < ch_gridDims[0] - 1
+      if (voxelIndex[0] < ch_gridDims[0] - 1
       && voxelIndex[1] < ch_gridDims[1] - 1
       && voxelIndex[2] < ch_gridDims[2] - 1)
       {
