@@ -540,7 +540,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   std::cout << "Tile : " << h_tileDims[0] << "x" << h_tileDims[1] << "x" << h_tileDims[2] << std::endl;
   size_t freeMemory, totalMemory;
   CudaErrorCheck(cudaMemGetInfo(&freeMemory, &totalMemory));
-  std::cout << "Free nb after tiling : " << freeMemory/sizeof(TVolumetric) << std::endl << std::endl;
+  std::cout << "Free nb after tiling : " << freeMemory / sizeof(TVolumetric) << std::endl << std::endl;
 
   // Organize threads into blocks and grids
   dim3 dimBlock(h_tileDims[0], 1, 1); // nb threads on each block
@@ -577,7 +577,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
       //std::cout<<"\tdepthmap = "<<j<<std::endl;
       if (j % (nbDepthMap/10) == 0)
       {
-        std::cout <<  ((100 * is)/nbSequential) + (((j)*100) / (nbDepthMap*nbSequential)) << " %" << std::flush;
+        std::cout << "\r" << ((100 * is)/nbSequential) + (((j)*100) / (nbDepthMap*nbSequential)) << " %" << std::flush;
       }
 
       // Init depthmap data to be transfered
@@ -595,7 +595,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
       // Copy data to devices and run kernels
       for (int ic = 0; ic < std::min(nbConcurrent, nbTiles - is * nbConcurrent); ic++)
       {
-        int i = ic + nbConcurrent * is;
+        int tileId = ic + nbConcurrent * is;
         //std::cout<<"\t\tic = "<<ic<<std::endl;
         CudaErrorCheck(cudaSetDevice(ic));
 
@@ -603,7 +603,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
         CudaErrorCheck(cudaDeviceSynchronize());
 
         // Copy data from host to
-        CudaErrorCheck(cudaMemcpy(d_tileOrigin, tileOrigin[i], 3 * sizeof(int), cudaMemcpyHostToDevice));
+        CudaErrorCheck(cudaMemcpy(d_tileOrigin, tileOrigin[tileId], 3 * sizeof(int), cudaMemcpyHostToDevice));
         CudaErrorCheck(cudaMemcpy(d_depthMap, h_depthMap, nbPixelOnDepthMap * sizeof(TypeCompute), cudaMemcpyHostToDevice));
         CudaErrorCheck(cudaMemcpy(d_matrixK, h_matrixK, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
         CudaErrorCheck(cudaMemcpy(d_matrixRT, h_matrixRT, SizeMat4x4 * sizeof(TypeCompute), cudaMemcpyHostToDevice));
@@ -637,7 +637,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
     // Retrieve devices tile output and update host voxels
     for (int ic = 0; ic < std::min(nbConcurrent, nbTiles - is * nbConcurrent); ic++)
     {
-      int i = ic + nbConcurrent * is;
+      int tileId = ic + nbConcurrent * is;
       //std::cout<<"\t\tic = "<<ic<<std::endl;
       CudaErrorCheck(cudaSetDevice(ic));
 
@@ -651,7 +651,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
       CudaErrorCheck(cudaMemset(d_outTile, 0, nbVoxelsTile * sizeof(TVolumetric)));
 
       // Copy data from tile to output double array
-      copyTileDataToOutput<TVolumetric>(nbVoxelsTile, i, tileOrigin[i], h_outTile, h_outScalar);
+      copyTileDataToOutput<TVolumetric>(nbVoxelsTile, tileId, tileOrigin[tileId], h_outTile, h_outScalar);
     }
   }
 
