@@ -143,14 +143,9 @@ int computeVoxelIDGrid(int coordinates[SizePoint3D])
 */
 void computeVoxel3DCoords(int gridId, int tileDims[3], int coordinates[SizePoint3D])
 {
-  coordinates[2] = gridId;
-  coordinates[1] = (coordinates[2]) % (tileDims[1] * tileDims[0]);
-  coordinates[0] = (coordinates[1]) % (tileDims[0]);
-
-  coordinates[2] -= coordinates[1];
-  coordinates[2] /= (tileDims[1] * tileDims[0]);
-  coordinates[1] -= coordinates[0];
-  coordinates[1] /= (tileDims[0]);
+  coordinates[0] = gridId % tileDims[0];
+  coordinates[1] = (gridId / tileDims[0]) % tileDims[1];
+  coordinates[2] = ((gridId / tileDims[0]) / tileDims[1]) % tileDims[2];
 }
 
 // ----------------------------------------------------------------------------
