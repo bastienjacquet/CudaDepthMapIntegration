@@ -332,6 +332,15 @@ bool ReadArguments(int argc, char ** argv)
     g_gridDims[2] = (int)(sizeZ / g_gridSpacing[2]);
     }
 
+  if (forceCubicVoxel)
+    {
+    // Get the minimum spacing
+    std::vector<double>::iterator iter = std::min_element(std::begin(g_gridSpacing), std::end(g_gridSpacing));
+    double min = *iter;
+    for (int i = 0; i < 3; i++)
+      g_gridSpacing[i] = min;
+    }
+
   // If only one value is set for tiling, we set the same tiling for Y and Z
   if (g_tilingDims.size() == 1)
   {
@@ -357,15 +366,6 @@ bool ReadArguments(int argc, char ** argv)
     g_tilingDims[1] = g_gridDims[1] - 1;
     g_tilingDims[2] = g_gridDims[2] - 1;
   }
-
-  if (forceCubicVoxel)
-    {
-    // Get the minimum spacing
-    std::vector<double>::iterator iter = std::min_element(std::begin(g_gridSpacing), std::end(g_gridSpacing));
-    double min = *iter;
-    for (int i = 0; i < 3; i++)
-      g_gridSpacing[i] = min;
-    }
 
   return true;
 }
