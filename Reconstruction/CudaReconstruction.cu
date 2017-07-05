@@ -213,28 +213,47 @@ void computeTileDims(int nbDevices)
   for (int i = 0; i < nbDevices; i++)
   {
     CudaErrorCheck(cudaSetDevice(i));
-    CudaErrorCheck(cudaMemGetInfo(&freeMemory, &totalMemory));
+    CudaErrorCheck(cudaMemGetInfo(&free, &totalMemory));
 
     if (i == 0)
     {
-      free = freeMemory;
+      freeMemory = free;
     }
     else
     {
-      free = std::min(free, freeMemory);
+      freeMemory = std::min(freeMemory, free);
     }
   }
 
   int voxelsPerTile = h_tileDims[0] * h_tileDims[1] * h_tileDims[2];
   int usagePercent = 80;
-  int freeVoxels = double(usagePercent * free) / (100 * sizeof(TVolumetric));
+  int freeVoxels = double(usagePercent * freeMemory) / (100 * sizeof(TVolumetric));
 
   // Use free GPU memory to reduce tile sizes if need be
   while (voxelsPerTile > freeVoxels)
   {
     //h_tileDims[2] = freeVoxels / (h_tileDims[0] * h_tileDims[1]);
-    h_tileDims[2] = vtkMath::Ceil(double(h_tileDims[2]) / 2);
+    // Subdivide the Z dimension
+    if(h_tileDims[2] > 1)
+    {
+      h_tileDims[2] = vtkMath::Ceil(double(h_tileDims[2]) / 2);
+    }
+    else
+    {
+      // Subdivide the Y dimension
+      if(h_tileDims[1] > 1)
+      {
+        h_tileDims[1] = vtkMath::Ceil(double(h_tileDims[1]) / 2);
+      }
+      else
+      {
+        // Subdivide the X dimension
+        h_tileDims[0] = vtkMath::Ceil(double(h_tileDims[0]) / 2);
+      }
+    }
+
     voxelsPerTile = h_tileDims[0] * h_tileDims[1] * h_tileDims[2];
+    //std::cout << "tileDims : " << h_tileDims[0]<<" "<< h_tileDims[1]<<" "<<h_tileDims[2] << std::endl;
   }
   //std::cout << "80% of free memory : " << freeBytes << std::endl << std::endl;
 }
