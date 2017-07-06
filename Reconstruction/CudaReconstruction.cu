@@ -162,43 +162,20 @@ void computeVoxel3DCoords(int gridId, int tileDims[3], int coordinates[SizePoint
 */
 void computeTileOrigins(int nbTilesXYZ[3], int tileOrigin[][3])
 {
-  int tileOffset[3] = {0,0,0};
-
   for (int x = 0; x < nbTilesXYZ[0]; x++)
   {
-    if (tileOffset[0] > ch_gridDims[0] - 2)
-    {
-      tileOffset[0] = 0;
-    }
-
     for (int y = 0; y < nbTilesXYZ[1]; y++)
     {
-      if (tileOffset[1] > ch_gridDims[1] - 2)
-      {
-        tileOffset[1] = 0;
-      }
-
       for (int z = 0; z < nbTilesXYZ[2]; z++)
       {
-        if (tileOffset[2] > ch_gridDims[2] - 2)
-        {
-          tileOffset[2] = 0;
-        }
-
         int id = z + nbTilesXYZ[2]*(y + nbTilesXYZ[1]*x);
-        tileOrigin[id][0] = tileOffset[0];
-        tileOrigin[id][1] = tileOffset[1];
-        tileOrigin[id][2] = tileOffset[2];
+        tileOrigin[id][0] = x * h_tileDims[0];
+        tileOrigin[id][1] = y * h_tileDims[1];
+        tileOrigin[id][2] = z * h_tileDims[2];
 
         std::cout<<"tileOrigin["<<id<<"] : "<<tileOrigin[id][0]<<" "<<tileOrigin[id][1]<<" "<<tileOrigin[id][2]<<std::endl;
-
-        tileOffset[2] += h_tileDims[2];
       }
-
-      tileOffset[1] += h_tileDims[1];
     }
-
-    tileOffset[0] += h_tileDims[0];
   }
 }
 
@@ -238,16 +215,15 @@ void computeTileDims(int nbDevices)
   // Use free GPU memory to reduce tile sizes if need be
   while (voxelsPerTile > freeVoxels)
   {
-    //h_tileDims[2] = freeVoxels / (h_tileDims[0] * h_tileDims[1]);
     // Subdivide the Z dimension
-    if(h_tileDims[2] > 1)
+    if (h_tileDims[2] > 1)
     {
       h_tileDims[2] = vtkMath::Ceil(double(h_tileDims[2]) / 2);
     }
     else
     {
       // Subdivide the Y dimension
-      if(h_tileDims[1] > 1)
+      if (h_tileDims[1] > 1)
       {
         h_tileDims[1] = vtkMath::Ceil(double(h_tileDims[1]) / 2);
       }
@@ -259,9 +235,7 @@ void computeTileDims(int nbDevices)
     }
 
     voxelsPerTile = h_tileDims[0] * h_tileDims[1] * h_tileDims[2];
-    //std::cout << "tileDims : " << h_tileDims[0]<<" "<< h_tileDims[1]<<" "<<h_tileDims[2] << std::endl;
   }
-  //std::cout << "80% of free memory : " << freeBytes << std::endl << std::endl;
 }
 
 // ----------------------------------------------------------------------------
@@ -520,7 +494,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   const int nbDepthMap = (int)vtiList.size();
   int nbDevices;
   cudaGetDeviceCount(&nbDevices);
-  printf("number of devices : %d\n",nbDevices);
+  std::cout << "number of devices : " << nbDevices << std::endl;
 
   std::cout << "START CUDA ON " << nbDepthMap << " Depth maps" << std::endl;
 
@@ -611,10 +585,10 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
 
     for (int j = 0; j < nbDepthMap; j++)
     {
-      if (j % (nbDepthMap/10) == 0)
+      if (j % (nbDepthMap / 10) == 0)
       {
         std::cout << (100 * j) / nbDepthMap <<" %\t("
-        << ((100 * is) / nbSequential) + (((j)*100) / (nbDepthMap*nbSequential)) << " %)" << std::flush;
+        << ((100 * is) / nbSequential) + ((j * 100) / (nbDepthMap * nbSequential)) << " %)" << std::flush;
       }
 
       // Init depthmap data to be transfered
