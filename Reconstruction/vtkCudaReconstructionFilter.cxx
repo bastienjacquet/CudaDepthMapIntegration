@@ -46,6 +46,7 @@
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStructuredGrid.h"
+#include <vtksys/SystemInformation.hxx>
 #include <vtksys/SystemTools.hxx>
 #include "vtkTransform.h"
 #include "vtkXMLImageDataReader.h"
@@ -125,13 +126,26 @@ int vtkCudaReconstructionFilter::RequestData(
   double gridSpacing[3];
   inGrid->GetSpacing(gridSpacing);
 
-  // initialize output
   vtkNew<vtkDoubleArray> outScalar;
   outScalar->SetName("reconstruction_scalar");
   outScalar->SetNumberOfComponents(1);
-  outScalar->SetNumberOfTuples(inGrid->GetNumberOfCells());
-  outScalar->FillComponent(0, 0);
   outGrid->ShallowCopy(inGrid);
+
+  // Get system information
+  vtksys::SystemInformation sysInfo;
+  std::cout<<"ALLOC SIZE : "<<inGrid->GetNumberOfCells() * sizeof(double)<<std::endl;
+  std::cout<<"FREE RAM : "<<(sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024<<std::endl;
+  // initialize output
+  if (inGrid->GetNumberOfCells() * sizeof(double) < (sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024)
+  {
+    outScalar->SetNumberOfTuples(inGrid->GetNumberOfCells());
+  }
+  else
+  {
+    outScalar->SetNumberOfTuples(0);
+  }
+
+  outScalar->FillComponent(0, 0);
   outGrid->GetCellData()->AddArray(outScalar.Get());
 
   // Check if all variables used in cuda are set

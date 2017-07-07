@@ -148,56 +148,62 @@ int main(int argc, char ** argv)
   std::string message = "Reconstruction execution time : " + std::to_string(g_reconstructionExecutionTime) + " s";
   ShowInformation(message);
 
-  ShowInformation("** Transform cell data to point data...");
-  vtkNew<vtkCellDataToPointData> transformCellDataToPointData;
-  transformCellDataToPointData->SetInputData(cudaReconstructionFilter->GetOutput());
-  transformCellDataToPointData->PassCellDataOn();
-  transformCellDataToPointData->Update();
-  transformCellDataToPointData->GetOutput()->GetPointData()->SetActiveScalars("reconstruction_scalar");
-  /*
-  vtkNew<vtkMetaImageWriter> mIWriter;
-  mIWriter->SetFileName("meta_image_volume.mha");
-  mIWriter->SetInputData(transformCellDataToPointData->GetOutput());
-  mIWriter->SetCompression(true);
-  mIWriter->Write();
-  */
+  if (cudaReconstructionFilter->GetOutput()->GetActualMemorySize() != 0)
+  {
+    ShowInformation("** Transform cell data to point data...");
+    vtkNew<vtkCellDataToPointData> transformCellDataToPointData;
+    transformCellDataToPointData->SetInputData(cudaReconstructionFilter->GetOutput());
+    transformCellDataToPointData->PassCellDataOn();
+    transformCellDataToPointData->Update();
+    transformCellDataToPointData->GetOutput()->GetPointData()->SetActiveScalars("reconstruction_scalar");
+    /*
+    vtkNew<vtkMetaImageWriter> mIWriter;
+    mIWriter->SetFileName("meta_image_volume.mha");
+    mIWriter->SetInputData(transformCellDataToPointData->GetOutput());
+    mIWriter->SetCompression(true);
+    mIWriter->Write();
+    */
 
-  vtkImageData* out = transformCellDataToPointData->GetImageDataOutput();
-  out->GetPointData()->SetActiveScalars("reconstruction_scalar");
-
-
-  ShowInformation("** Compute contour...");
-  vtkNew<vtkContourFilter> contourFilter;
-  contourFilter->SetInputData(out);
-  contourFilter->SetNumberOfContours(1);
-  contourFilter->SetValue(0, contourValue);
-  contourFilter->Update();
+    vtkImageData* out = transformCellDataToPointData->GetImageDataOutput();
+    out->GetPointData()->SetActiveScalars("reconstruction_scalar");
 
 
-  ShowInformation("** Apply grid matrix to the reconstruction output...");
-  vtkNew<vtkTransform> transform;
-  transform->SetMatrix(g_gridMatrix.Get());
-  vtkNew<vtkTransformFilter> transformFilter;
-  transformFilter->SetInputConnection(contourFilter->GetOutputPort());
-  transformFilter->SetTransform(transform.Get());
-  transformFilter->Update();
+    ShowInformation("** Compute contour...");
+    vtkNew<vtkContourFilter> contourFilter;
+    contourFilter->SetInputData(out);
+    contourFilter->SetNumberOfContours(1);
+    contourFilter->SetValue(0, contourValue);
+    contourFilter->Update();
 
-std::cout << "Actual memory size : " << transformFilter->GetOutput()->GetActualMemorySize() << std::endl;
-  ShowInformation("** Save mesh...");
-  vtkNew<vtkXMLPolyDataWriter> writer;
-  writer->SetFileName(g_outputMeshFilename.c_str());
-  writer->SetInputData(transformFilter->GetOutput());
-  writer->Write();
 
-  ShowInformation("** Save volume...");
-  transformFilter->SetInputConnection(cudaReconstructionFilter->GetOutputPort());
-  transformFilter->Update();
-  vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
-  vtkNew<vtkXMLStructuredGridWriter> gridWriter;
-  gridWriter->SetFileName(g_outputGridFilename.c_str());
-  gridWriter->SetInputData(outputGrid);
-  gridWriter->Write();
+    ShowInformation("** Apply grid matrix to the reconstruction output...");
+    vtkNew<vtkTransform> transform;
+    transform->SetMatrix(g_gridMatrix.Get());
+    vtkNew<vtkTransformFilter> transformFilter;
+    transformFilter->SetInputConnection(contourFilter->GetOutputPort());
+    transformFilter->SetTransform(transform.Get());
+    transformFilter->Update();
 
+
+    ShowInformation("** Save mesh...");
+    vtkNew<vtkXMLPolyDataWriter> writer;
+    writer->SetFileName(g_outputMeshFilename.c_str());
+    writer->SetInputData(transformFilter->GetOutput());
+    writer->Write();
+
+    ShowInformation("** Save volume...");
+    transformFilter->SetInputConnection(cudaReconstructionFilter->GetOutputPort());
+    transformFilter->Update();
+    vtkStructuredGrid* outputGrid = vtkStructuredGrid::SafeDownCast(transformFilter->GetOutput());
+    vtkNew<vtkXMLStructuredGridWriter> gridWriter;
+    gridWriter->SetFileName(g_outputGridFilename.c_str());
+    gridWriter->SetInputData(outputGrid);
+    gridWriter->Write();
+  }
+  else
+  {
+    std::cout<<"No output"<<std::endl;
+  }
 
   g_totalExecutionTime = (double)(clock() - start) / CLOCKS_PER_SEC;
   if (writeSummaryFile)
@@ -359,8 +365,8 @@ bool ReadArguments(int argc, char ** argv)
     }
   }
   // Tiling cannot be bigger than grid dimensions
-  if (g_tilingDims[0] * g_tilingDims[1] * g_tilingDims[2]
-  > (g_gridDims[0] - 1)*(g_gridDims[1] - 1)*(g_gridDims[2] - 1))
+  if (size_t(g_tilingDims[0]) * g_tilingDims[1] * g_tilingDims[2]
+  > size_t(g_gridDims[0] - 1) * (g_gridDims[1] - 1) * (g_gridDims[2] - 1))
   {
     g_tilingDims[0] = g_gridDims[0] - 1;
     g_tilingDims[1] = g_gridDims[1] - 1;
