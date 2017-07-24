@@ -42,6 +42,7 @@ class ReconstructionData
 {
 public:
   ReconstructionData();
+  ReconstructionData(const char* depthPathChar, const char* matrixPathChar);
   ReconstructionData(std::string depthPath, std::string matrixPath);
   ~ReconstructionData();
 

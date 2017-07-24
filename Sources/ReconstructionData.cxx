@@ -47,14 +47,39 @@
 
 ReconstructionData::ReconstructionData()
 {
-  this->DepthMap = nullptr;
-  this->MatrixK = nullptr;
-  this->MatrixTR = nullptr;
+  this->DepthMap = NULL;
+  this->MatrixK = NULL;
+  this->MatrixTR = NULL;
+}
+
+ReconstructionData::ReconstructionData(const char* depthPathChar,
+                                       const char* matrixPathChar)
+{
+  std::string depthPath(depthPathChar);
+  std::string matrixPath(matrixPathChar);
+  // Read DEPTH MAP an fill this->DepthMap
+  this->DepthMap = vtkImageData::New();
+  ReconstructionData::ReadDepthMap(depthPath, this->DepthMap);
+
+
+  this->TransformWorldToCamera = vtkTransform::New();
+  this->TransformCameraToDepthMap = vtkTransform::New();
+
+  // Read KRTD FILE
+  vtkNew<vtkMatrix3x3> K;
+  vtkNew<vtkMatrix4x4> RT;
+  this->MatrixTR = vtkMatrix4x4::New();
+  this->MatrixK = vtkMatrix3x3::New();
+  this->Matrix4K = vtkMatrix4x4::New();
+  help::ReadKrtdFile(matrixPath, K.Get(), RT.Get());
+
+  // Set matrix K to  create matrix4x4 for K
+  this->SetMatrixK(K.Get());
+  this->SetMatrixTR(RT.Get());
 }
 
 ReconstructionData::ReconstructionData(std::string depthPath,
                                        std::string matrixPath)
-                                       :ReconstructionData()
 {
   // Read DEPTH MAP an fill this->DepthMap
   this->DepthMap = vtkImageData::New();
@@ -94,7 +119,7 @@ void ReconstructionData::GetColorValue(int* pixelPosition, double rgb[3])
   vtkUnsignedCharArray* color =
     vtkUnsignedCharArray::SafeDownCast(this->DepthMap->GetPointData()->GetArray("Color"));
 
-  if (color == nullptr)
+  if (color == NULL)
     {
     std::cerr << "Error, no 'Color' array exists" << std::endl;
     return;
@@ -137,7 +162,7 @@ vtkMatrix4x4* ReconstructionData::GetMatrixTR()
 
 void ReconstructionData::ApplyDepthThresholdFilter(double thresholdBestCost)
 {
-  if (this->DepthMap == nullptr)
+  if (this->DepthMap == NULL)
     return;
 
   vtkDoubleArray* depths =
@@ -145,7 +170,7 @@ void ReconstructionData::ApplyDepthThresholdFilter(double thresholdBestCost)
   vtkDoubleArray* bestCost =
     vtkDoubleArray::SafeDownCast(this->DepthMap->GetPointData()->GetArray("Best Cost Values"));
 
-  if (depths == nullptr)
+  if (depths == NULL)
     {
     std::cerr << "Error during threshold, depths is empty" << std::endl;
     return;
@@ -177,13 +202,13 @@ void ReconstructionData::TransformWorldToDepthMapPosition(const double* worldCoo
   depthMapCoordinate[0] = depthMapCoordinate[0] / depthMapCoordinate[2];
   depthMapCoordinate[1] = depthMapCoordinate[1] / depthMapCoordinate[2];
 
-  pixelCoordinate[0] = std::round(depthMapCoordinate[0]);
-  pixelCoordinate[1] = std::round(depthMapCoordinate[1]);
+  pixelCoordinate[0] = vtkMath::Round(depthMapCoordinate[0]);
+  pixelCoordinate[1] = vtkMath::Round(depthMapCoordinate[1]);
 }
 
 void ReconstructionData::SetDepthMap(vtkImageData* data)
 {
-  if (this->DepthMap != nullptr)
+  if (this->DepthMap != NULL)
     this->DepthMap->Delete();
   this->DepthMap = data;
   this->DepthMap->Register(0);
@@ -191,12 +216,12 @@ void ReconstructionData::SetDepthMap(vtkImageData* data)
 
 void ReconstructionData::SetMatrixK(vtkMatrix3x3* matrix)
 {
-  if (this->MatrixK != nullptr)
+  if (this->MatrixK != NULL)
     this->MatrixK->Delete();
   this->MatrixK = matrix;
   this->MatrixK->Register(0);
 
-  if (this->Matrix4K != nullptr)
+  if (this->Matrix4K != NULL)
     this->Matrix4K->Delete();
   this->Matrix4K = vtkMatrix4x4::New();
   this->Matrix4K->Identity();
@@ -213,7 +238,7 @@ void ReconstructionData::SetMatrixK(vtkMatrix3x3* matrix)
 
 void ReconstructionData::SetMatrixTR(vtkMatrix4x4* matrix)
 {
-  if (this->MatrixTR != nullptr)
+  if (this->MatrixTR != NULL)
     this->MatrixTR->Delete();
   this->MatrixTR = matrix;
   this->MatrixTR->Register(0);

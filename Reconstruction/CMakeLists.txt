@@ -1,16 +1,11 @@
-project( Reconstruction )
-
-include( ${VTK_USE_FILE} )
 
 # Allow to debug GPU function
-cuda_compile( CUDA_COMPILE_O CudaReconstruction.cu OPTIONS -G -std=c++11 -D_MWAITXINTRIN_H_INCLUDED)
+cuda_compile( CUDA_COMPILE_O CudaReconstruction.cu OPTIONS -G )
 
-# Specify target & source files to compile
-cuda_add_executable(
-    ${PROJECT_NAME}
-    main.cxx
-    vtkCudaReconstructionFilter.h
-    vtkCudaReconstructionFilter.cxx
-    ${CUDA_COMPILE_O})
+cuda_add_library( CudaReconstructionLib SHARED ${CUDA_COMPILE_O} )
 
-target_link_libraries(${PROJECT_NAME} ReconstructionLib ${VTK_LIBRARIES})
+ADD_PARAVIEW_PLUGIN(CudaReconstructionFilter "1.0"
+  SERVER_MANAGER_XML CudaReconstructionFilter.xml
+  SERVER_MANAGER_SOURCES vtkCudaReconstructionFilter.cxx)
+
+target_link_libraries( CudaReconstructionFilter PRIVATE ReconstructionDataLib CudaReconstructionLib ${VTK_LIBRARIES} )

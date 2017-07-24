@@ -46,7 +46,7 @@
 
 MeshColoration::MeshColoration()
 {
-  this->OutputMesh = nullptr;
+  this->OutputMesh = NULL;
 }
 
 MeshColoration::MeshColoration(vtkPolyData* mesh, std::string vti, std::string krtd)
@@ -73,7 +73,7 @@ MeshColoration::MeshColoration(vtkPolyData* mesh, std::string vti, std::string k
 
 MeshColoration::~MeshColoration()
 {
-  if (this->OutputMesh != nullptr)
+  if (this->OutputMesh != NULL)
     this->OutputMesh->Delete();
   for (int i = 0; i < this->DataList.size(); i++)
     {
@@ -84,7 +84,7 @@ MeshColoration::~MeshColoration()
 
 void MeshColoration::SetInput(vtkPolyData* mesh)
 {
-  if (this->OutputMesh != nullptr)
+  if (this->OutputMesh != NULL)
     this->OutputMesh->Delete();
   this->OutputMesh = vtkPolyData::New();
   this->OutputMesh->DeepCopy(mesh);
@@ -99,7 +99,7 @@ bool MeshColoration::ProcessColoration()
 {
   int nbDepthMap = (int)this->DataList.size();
 
-  if (this->OutputMesh == nullptr || nbDepthMap == 0)
+  if (this->OutputMesh == NULL || nbDepthMap == 0)
     {
     std::cerr << "Error when input has been set or during reading vti/krtd file path" << std::endl;
     return false;

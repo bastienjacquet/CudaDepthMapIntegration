@@ -56,6 +56,7 @@
 
 #include <algorithm>
 #include <string>
+#include <sstream>
 
 //-----------------------------------------------------------------------------
 // READ ARGUMENTS
@@ -120,12 +121,6 @@ int main(int argc, char ** argv)
   vtkNew<vtkMatrix4x4> g_gridMatrix;
   CreateGridMatrixFromInput(g_gridMatrix.Get());
 
-  // Generate grid from arguments
-  vtkNew<vtkImageData> grid;
-  grid->SetDimensions(&g_gridDims[0]);
-  grid->SetSpacing(&g_gridSpacing[0]);
-  grid->SetOrigin(&g_gridOrigin[0]);
-
   ShowInformation("** Launch reconstruction...");
   std::string dmapGlobalFile = g_pathFolder + "/" + g_depthMapContainer;
   std::string krtGlobalFile = g_pathFolder + "/" + g_KRTContainer;
@@ -139,13 +134,17 @@ int main(int argc, char ** argv)
   cudaReconstructionFilter->SetRayPotentialEta(rayPotentialEta);
   cudaReconstructionFilter->SetRayPotentialDelta(rayPotentialDelta);
   cudaReconstructionFilter->SetThresholdBestCost(thresholdBestCost);
-  cudaReconstructionFilter->SetInputData(grid.Get());
   cudaReconstructionFilter->SetGridMatrix(g_gridMatrix.Get());
+  cudaReconstructionFilter->SetGridOrigin(g_gridOrigin.data());
+  cudaReconstructionFilter->SetGridSpacing(g_gridSpacing.data());
+  cudaReconstructionFilter->SetGridDimension(g_gridDims.data());
   cudaReconstructionFilter->SetTilingDims(g_tilingDims.data());
   cudaReconstructionFilter->Update();
 
   g_reconstructionExecutionTime = cudaReconstructionFilter->GetExecutionTime();
-  std::string message = "Reconstruction execution time : " + std::to_string(g_reconstructionExecutionTime) + " s";
+  std::stringstream ss;
+  ss << "Reconstruction execution time : " << g_reconstructionExecutionTime << " s";
+  std::string message =  ss.str();
   ShowInformation(message);
 
   if (cudaReconstructionFilter->GetOutput()->GetActualMemorySize() != 0)
@@ -234,7 +233,7 @@ bool ReadArguments(int argc, char ** argv)
   arg.AddArgument("--gridVecX", argT::MULTI_ARGUMENT, &g_gridVecX, "Input grid direction X (default 1 0 0)");
   arg.AddArgument("--gridVecY", argT::MULTI_ARGUMENT, &g_gridVecY, "Input grid direction Y (default 0 1 0)");
   arg.AddArgument("--gridVecZ", argT::MULTI_ARGUMENT, &g_gridVecZ, "Input grid direction Z (default 0 0 1)");
-  arg.AddArgument("--tilingDims", argT::MULTI_ARGUMENT, &g_tilingDims, "Voxel tiling (default 80% of free GPU memory)");
+  arg.AddArgument("--tilingDims", argT::MULTI_ARGUMENT, &g_tilingDims, "Voxel tiling (defaults at less than 80% of free GPU memory)");
   arg.AddArgument("--outputGridFilename", argT::SPACE_ARGUMENT, &g_outputGridFilename, "Output grid filename (.vts) (required)");
   arg.AddArgument("--dataFolder", argT::SPACE_ARGUMENT, &g_pathFolder, "Folder which contains all data (required)");
   arg.AddArgument("--depthMapFile", argT::SPACE_ARGUMENT, &g_depthMapContainer, "File which contains all the depth map path(default vtiList.txt)");
@@ -341,7 +340,7 @@ bool ReadArguments(int argc, char ** argv)
   if (forceCubicVoxel)
     {
     // Get the minimum spacing
-    std::vector<double>::iterator iter = std::min_element(std::begin(g_gridSpacing), std::end(g_gridSpacing));
+    std::vector<double>::iterator iter = std::min_element(g_gridSpacing.begin(), g_gridSpacing.end());
     double min = *iter;
     for (int i = 0; i < 3; i++)
       g_gridSpacing[i] = min;
@@ -445,16 +444,13 @@ void ShowFilledParameters()
   std::cout << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
   std::cout << "--- Real volume size : ( " << g_gridDims[0] * g_gridSpacing[0] << ", " << g_gridDims[1] * g_gridSpacing[1] << ", " << g_gridDims[2] * g_gridSpacing[2] << ")" << std::endl;
   std::cout << "--- Matrix :" << std::endl;
-    std::string l1 = "  " + std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
-    std::string l2 = "  " + std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
-    std::string l3 = "  " + std::to_string(g_gridVecX[2]) + "  " + std::to_string(g_gridVecY[2]) + "  " + std::to_string(g_gridVecZ[2]) + "\n";
-  std::cout << l1 << std::endl;
-  std::cout << l2 << std::endl;
-  std::cout << l3 << std::endl;
+  std::cout << g_gridVecX[0] << "  " << g_gridVecY[0] << "  " << g_gridVecZ[0] <<  std::endl;
+  std::cout << g_gridVecX[1] << "  " << g_gridVecY[1] << "  " << g_gridVecZ[1] <<  std::endl;
+  std::cout << g_gridVecX[2] << "  " << g_gridVecY[2] << "  " << g_gridVecZ[2] <<  std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "** DEPTH MAP :" << std::endl;
   std::cout << "----------------------" << std::endl;
-  std::cout << "--- Threshold for BestCost  : " << std::to_string(thresholdBestCost) << std::endl;
+  std::cout << "--- Threshold for BestCost  : " << thresholdBestCost << std::endl;
   std::cout << std::endl;
   std::cout << "----------------------" << std::endl;
   std::cout << "** CUDA :" << std::endl;
@@ -514,16 +510,13 @@ void WriteSummaryFile(std::string path, int argc, char** argv)
   output << "--- Nb voxels  : " << g_gridDims[0] * g_gridDims[1] * g_gridDims[2] << std::endl;
   output << "--- Real volume size : ( " << g_gridOrigin[0] - g_gridEnd[0] << ", " << g_gridOrigin[1] - g_gridEnd[1] << ", " << g_gridOrigin[2] - g_gridEnd[2] << ")" << std::endl;
   output << "--- Matrix :" << std::endl;
-  std::string l1 = "  " + std::to_string(g_gridVecX[0]) + "  " + std::to_string(g_gridVecY[0]) + "  " + std::to_string(g_gridVecZ[0]) + "\n";
-  std::string l2 = "  " + std::to_string(g_gridVecX[1]) + "  " + std::to_string(g_gridVecY[1]) + "  " + std::to_string(g_gridVecZ[1]) + "\n";
-  std::string l3 = "  " + std::to_string(g_gridVecX[2]) + "  " + std::to_string(g_gridVecY[2]) + "  " + std::to_string(g_gridVecZ[2]) + "\n";
-  output << l1 << std::endl;
-  output << l2 << std::endl;
-  output << l3 << std::endl;
+  output << "  " << g_gridVecX[0] << "  " << g_gridVecY[0] << "  " << g_gridVecZ[0] << std::endl;
+  output << "  " << g_gridVecX[1] << "  " << g_gridVecY[1] << "  " << g_gridVecZ[1] << std::endl;
+  output << "  " << g_gridVecX[2] << "  " << g_gridVecY[2] << "  " << g_gridVecZ[2] << std::endl;
   output << "----------------------" << std::endl;
   output << "** DEPTH MAP :" << std::endl;
   output << "----------------------" << std::endl;
-  output << "--- Threshold for BestCost  : " << std::to_string(thresholdBestCost) << std::endl;
+  output << "--- Threshold for BestCost  : " << thresholdBestCost << std::endl;
   output << std::endl;
   output << "----------------------" << std::endl;
   output << "** CUDA :" << std::endl;

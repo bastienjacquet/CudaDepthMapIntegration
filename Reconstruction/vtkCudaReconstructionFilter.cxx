@@ -26,19 +26,20 @@
 // HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
 // LIABILITY, OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 // OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 #include "vtkCudaReconstructionFilter.h"
 
 #include "ReconstructionData.h"
 
 #include "vtkCell.h"
 #include "vtkCellData.h"
+#include "vtkCommand.h"
 #include "vtkDataSet.h"
 #include "vtkDoubleArray.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkMath.h"
+#include "vtkMathUtilities.h"
 #include "vtkMatrix3x3.h"
 #include "vtkMatrix4x4.h"
 #include "vtkNew.h"
@@ -59,13 +60,17 @@
 #include <time.h>
 #include <vector>
 
+#define PRINTA(expr, N) std::cout << #expr " = "; for (int _i_=0; _i_ < N; _i_++){std::cout << (expr[_i_]) << "\t";} std::cout << std::endl;
+
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
 
 
+
 void CudaInitialize(vtkMatrix4x4* i_gridMatrix, int h_gridDims[3],
   double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick, double h_rayPRho,
-  double h_rayPEta, double h_rayPDelta, int h_depthMapDim[2], int h_tilingDims[3]);
+  double h_rayPEta, double h_rayPDelta, int h_depthMapDim[2], int h_tilingDims[3],
+  vtkCudaReconstructionFilter* ch_cudaFilter);
 
 template <typename TVolumetric>
 bool ProcessDepthMap(std::vector<std::string> vtiList,std::vector<std::string> krtdList,
@@ -74,15 +79,36 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,std::vector<std::string> k
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 {
-  this->SetNumberOfInputPorts(1);
-  this->GridMatrix = 0;
-  this->RayPotentialRho = 0;
-  this->RayPotentialThickness = 0;
-  this->RayPotentialDelta = 0;
-  this->RayPotentialEta = 0;
-  this->ThresholdBestCost = 0;
+  this->SetNumberOfInputPorts(0);
+  this->ForceCubicVoxels = false;
+  this->WriteSummary = false;
+  this->DataFolder = 0;
+  this->DepthMapFile = 0;
   this->FilePathKRTD = 0;
   this->FilePathVTI = 0;
+  this->KRTDFile = 0;
+
+  for (int i = 0; i < 3; i++)
+  {
+    this->GridEnd[i] = VTK_DOUBLE_MIN;
+    this->GridOrigin[i] = VTK_DOUBLE_MIN;
+    this->GridSpacing[i] = VTK_DOUBLE_MIN;
+    this->GridVecX[i] = 0.0;
+    this->GridVecY[i] = 0.0;
+    this->GridVecZ[i] = 0.0;
+    this->GridNbVoxels[i] = VTK_INT_MIN;
+    this->TilingSize[i] = 0;
+  }
+  this->GridVecX[0] = 1.0;
+  this->GridVecY[1] = 1.0;
+  this->GridVecZ[2] = 1.0;
+  this->RayPotentialDelta = 0.0;
+  this->RayPotentialEta = 0.0;
+  this->RayPotentialRho = 0.0;
+  this->RayPotentialThickness = 0.0;
+  this->ThresholdBestCost = 0.0;
+  this->GridPropertiesMode = DEFAULT_MODE;
+  this->GridMatrix = 0;
 }
 
 //----------------------------------------------------------------------------
@@ -91,54 +117,58 @@ vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
   this->FilePathKRTD = 0;
   this->FilePathVTI = 0;
   this->GridMatrix = 0;
+  this->DataFolder = 0;
+  this->DepthMapFile = 0;
 }
 
 //----------------------------------------------------------------------------
 int vtkCudaReconstructionFilter::RequestData(
   vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **inputVector,
+  vtkInformationVector **vtkNotUsed(inputVector),
   vtkInformationVector *outputVector)
 {
   this->ExecutionTime = -1;
   clock_t start = clock();
 
+  if (!this->CheckArguments())
+  {
+    return 0;
+  }
+
+  // Set the KRTD and VTI file paths
+  std::string dmapGlobalFile = std::string(this->DataFolder) + "/" + std::string(this->DepthMapFile);
+  std::string krtdGlobalFile = std::string(this->DataFolder) + "/" + std::string(this->KRTDFile);
+  this->SetFilePathKRTD(krtdGlobalFile.c_str());
+  this->SetFilePathVTI(dmapGlobalFile.c_str());
+
+  this->CreateGridMatrixFromInput();
+
   // get the info objects
-  vtkInformation *inGridInfo = inputVector[0]->GetInformationObject(0);
   vtkInformation *outGridInfo = outputVector->GetInformationObject(0);
 
   // get the input and output
-  vtkImageData *inGrid = vtkImageData::SafeDownCast(
-    inGridInfo->Get(vtkDataObject::DATA_OBJECT()));
   vtkImageData *outGrid = vtkImageData::SafeDownCast(
     outGridInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  if (this->FilePathKRTD == 0 || this->FilePathVTI == 0)
-    {
-    std::cerr << "Error, some inputs have not been set." << std::endl;
-    return 0;
-    }
-
-  // get grid info
-  double gridOrig[3];
-  inGrid->GetOrigin(gridOrig);
-  int gridDims[3];
-  inGrid->GetDimensions(gridDims);
-  double gridSpacing[3];
-  inGrid->GetSpacing(gridSpacing);
+  // Generate grid from arguments
+  // We need (N+1)x(N+1)x(N+1) in dimensions to get NxNxN voxels
+  outGrid->SetDimensions(this->GridNbVoxels[0] + 1, this->GridNbVoxels[1] + 1, this->GridNbVoxels[2] + 1);
+  outGrid->SetSpacing(this->GridSpacing);
+  outGrid->SetOrigin(this->GridOrigin);
 
   vtkNew<vtkDoubleArray> outScalar;
   outScalar->SetName("reconstruction_scalar");
   outScalar->SetNumberOfComponents(1);
-  outGrid->ShallowCopy(inGrid);
 
   // Get system information
   vtksys::SystemInformation sysInfo;
-  std::cout<<"ALLOC SIZE : "<<inGrid->GetNumberOfCells() * sizeof(double)<<std::endl;
-  std::cout<<"FREE RAM : "<<(sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024<<std::endl;
+  //std::cout << "ALLOC SIZE (GiB) : " << static_cast<double>(outGrid->GetNumberOfCells() * sizeof(double)) / (1024 * 1024 * 1024) << std::endl;
+  //std::cout << "FREE RAM (GiB) : " << static_cast<double>(sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) / (1024 * 1024) << std::endl;
+
   // initialize output
-  if (inGrid->GetNumberOfCells() * sizeof(double) < (sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024)
+  if (outGrid->GetNumberOfCells() * sizeof(double) < (sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024)
   {
-    outScalar->SetNumberOfTuples(inGrid->GetNumberOfCells());
+    outScalar->SetNumberOfTuples(outGrid->GetNumberOfCells());
   }
   else
   {
@@ -148,81 +178,390 @@ int vtkCudaReconstructionFilter::RequestData(
   outScalar->FillComponent(0, 0);
   outGrid->GetCellData()->AddArray(outScalar.Get());
 
-  // Check if all variables used in cuda are set
-  if (this->RayPotentialRho == 0 && this->RayPotentialThickness == 0)
-    {
-    std::cerr << "Error : Ray potential Rho or Thickness or both have not been set" << std::endl;
+  if (this->Compute(outScalar.Get()) != 0)
+  {
     return 0;
-    }
-
-  this->Compute(gridDims, gridOrig, gridSpacing, this->TilingDims, outScalar.Get());
-
+  }
 
   clock_t end = clock();
-  this->ExecutionTime = (double)(end - start) / CLOCKS_PER_SEC;
+  this->ExecutionTime = double(end - start) / CLOCKS_PER_SEC;
+
+  if (this->WriteSummary)
+  {
+    this->WriteSummaryFile();
+  }
 
   return 1;
 }
 
+//-----------------------------------------------------------------------------
+/* Check if input vectors are orthogonals (GridVecX, GridVecY, GridVecZ) */
+bool vtkCudaReconstructionFilter::AreVectorsOrthogonal()
+{
+  double X[3] = { this->GridVecX[0], this->GridVecX[1], this->GridVecX[2] };
+  double Y[3] = { this->GridVecY[0], this->GridVecY[1], this->GridVecY[2] };
+  double Z[3] = { this->GridVecZ[0], this->GridVecZ[1], this->GridVecZ[2] };
+
+  double XY = vtkMath::Dot(X, Y);
+  double YZ = vtkMath::Dot(Y, Z);
+  double ZX = vtkMath::Dot(Z, X);
+
+  double epsilon = 10e-6;
+  if (vtkMathUtilities::FuzzyCompare(XY, 0.0, epsilon)
+      && vtkMathUtilities::FuzzyCompare(YZ, 0.0, epsilon)
+      && vtkMathUtilities::FuzzyCompare(ZX, 0.0, epsilon))
+  {
+    return true;
+  }
+
+  return false;
+}
 
 //----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::Compute(int gridDims[3], double gridOrig[3],
-  double gridSpacing[3], int tilingDims[3], vtkDoubleArray* outScalar)
+bool vtkCudaReconstructionFilter::CheckArguments()
+{
+  // Ray potential parameters check
+  if (this->RayPotentialRho <= 0.0)
+  {
+    vtkErrorMacro("Ray potential rho must be > 0");
+    return false;
+  }
+  if (this->RayPotentialEta < 0.0 || this->RayPotentialEta > 1.0)
+  {
+    vtkErrorMacro("Ray potential eta must be between 0 and 1");
+    return false;
+  }
+  if (this->RayPotentialDelta <= 0.0)
+  {
+    vtkErrorMacro("Ray potential delta must be > 0");
+    return false;
+  }
+  if (this->RayPotentialThickness <= 0.0)
+  {
+    vtkErrorMacro("Ray potential thickness must be > 0");
+    return false;
+  }
+  if (this->RayPotentialDelta < this->RayPotentialThickness)
+  {
+    vtkErrorMacro("Ray potential thickness must be less than delta");
+    return false;
+  }
+
+
+  if (this->ThresholdBestCost <= 0.0)
+  {
+    vtkErrorMacro("Best Cost Threshold must be > 0");
+    return false;
+  }
+
+
+  // File containers parameters check
+  if (this->DataFolder == 0)
+  {
+    vtkErrorMacro("Data folder must be specified");
+    return false;
+  }
+  if (this->DepthMapFile == 0)
+  {
+    vtkErrorMacro("Depth Map filename must be specified");
+    return false;
+  }
+  if (this->KRTDFile == 0)
+  {
+    vtkErrorMacro("KRTD filename must be specified");
+    return false;
+  }
+
+
+  // Grid parameters check
+  if (!this->AreVectorsOrthogonal())
+  {
+    vtkErrorMacro("Grid vectors are not orthogonal");
+    return false;
+  }
+
+  // Exactly 3 out of the 4 grid properties must be set
+  enum gridProperties_t {ORIGIN, END, NB_VOXELS, SPACING};
+  bool gridPropertySet[4] = {false};
+
+  if (this->GridPropertiesMode != END_NBVOX_SPAC
+      && this->GridOrigin[0] != VTK_DOUBLE_MIN
+      && this->GridOrigin[1] != VTK_DOUBLE_MIN
+      && this->GridOrigin[2] != VTK_DOUBLE_MIN)
+  {
+    gridPropertySet[ORIGIN] = true;
+  }
+
+  if (this->GridPropertiesMode != ORIG_NBVOX_SPAC
+      && this->GridEnd[0] != VTK_DOUBLE_MIN
+      && this->GridEnd[1] != VTK_DOUBLE_MIN
+      && this->GridEnd[2] != VTK_DOUBLE_MIN)
+  {
+    gridPropertySet[END] = true;
+  }
+
+  if (this->GridPropertiesMode != ORIG_END_SPAC
+      && this->GridNbVoxels[0] != VTK_INT_MIN
+      && this->GridNbVoxels[1] != VTK_INT_MIN
+      && this->GridNbVoxels[2] != VTK_INT_MIN)
+  {
+    if (this->GridNbVoxels[0] > 0
+        && this->GridNbVoxels[1] > 0
+        && this->GridNbVoxels[2] > 0)
+    {
+      gridPropertySet[NB_VOXELS] = true;
+    }
+    else
+    {
+      vtkErrorMacro("Grid number of voxels must all be > 0");
+      return false;
+    }
+  }
+
+  if (this->GridPropertiesMode != ORIG_END_NBVOX
+      && this->GridSpacing[0] != VTK_DOUBLE_MIN
+      && this->GridSpacing[1] != VTK_DOUBLE_MIN
+      && this->GridSpacing[2] != VTK_DOUBLE_MIN)
+  {
+    if (this->GridSpacing[0] > 0.0
+        && this->GridSpacing[1] > 0.0
+        && this->GridSpacing[2] > 0.0)
+    {
+      gridPropertySet[SPACING] = true;
+    }
+    else
+    {
+      vtkErrorMacro("Grid spacings must all be > 0");
+      return false;
+    }
+  }
+
+
+  if (this->GridPropertiesMode == DEFAULT_MODE)
+  {
+    // Count the number of grid properties set
+    int nbGridPropertySet = 0;
+    for (int i = 0; i < 4; i++)
+    {
+      nbGridPropertySet += gridPropertySet[i];
+    }
+
+    if (nbGridPropertySet != 3)
+    {
+      vtkErrorMacro("Exactly 3 grid properties must be set");
+      return false;
+    }
+    else
+    {
+      // Find which grid properties have been set
+      if (gridPropertySet[ORIGIN] == false)
+      {
+        this->GridPropertiesMode = END_NBVOX_SPAC;
+      }
+      if (gridPropertySet[END] == false)
+      {
+        this->GridPropertiesMode = ORIG_NBVOX_SPAC;
+      }
+      if (gridPropertySet[NB_VOXELS] == false)
+      {
+        this->GridPropertiesMode = ORIG_END_SPAC;
+      }
+      if (gridPropertySet[SPACING] == false)
+      {
+        this->GridPropertiesMode = ORIG_END_NBVOX;
+      }
+    }
+  }
+
+  if (this->ForceCubicVoxels && this->GridPropertiesMode != ORIG_END_NBVOX)
+  {
+    // Get the minimum spacing when it has been user specified
+    double min = *std::min_element(this->GridSpacing, this->GridSpacing + 3);
+    for (int i = 0; i < 3; i++)
+    {
+      this->GridSpacing[i] = min;
+    }
+  }
+
+  // Fill the missing grid argument
+  if (this->GridPropertiesMode == END_NBVOX_SPAC)
+  {
+    // Grid origin has to be computed
+    this->GridOrigin[0] = this->GridEnd[0] - (this->GridSpacing[0] * this->GridNbVoxels[0]);
+    this->GridOrigin[1] = this->GridEnd[1] - (this->GridSpacing[1] * this->GridNbVoxels[1]);
+    this->GridOrigin[2] = this->GridEnd[2] - (this->GridSpacing[2] * this->GridNbVoxels[2]);
+  }
+  else
+  {
+    if (this->GridPropertiesMode == ORIG_NBVOX_SPAC)
+    {
+      // Grid end has to be computed
+      this->GridEnd[0] = this->GridOrigin[0] + (this->GridSpacing[0] * this->GridNbVoxels[0]);
+      this->GridEnd[1] = this->GridOrigin[1] + (this->GridSpacing[1] * this->GridNbVoxels[1]);
+      this->GridEnd[2] = this->GridOrigin[2] + (this->GridSpacing[2] * this->GridNbVoxels[2]);
+    }
+    else
+    {
+      // Get the requested grid size on each axis
+      double sizeX = this->GridEnd[0] - this->GridOrigin[0];
+      double sizeY = this->GridEnd[1] - this->GridOrigin[1];
+      double sizeZ = this->GridEnd[2] - this->GridOrigin[2];
+
+      if (sizeX <= 0.0 || sizeY <= 0.0 || sizeZ <= 0.0)
+      {
+        vtkErrorMacro("Grid end coordinates must be greater than the grid origin's");
+        return false;
+      }
+
+      if (this->GridPropertiesMode == ORIG_END_SPAC)
+      {
+        // Compute the number of voxels accord to the spacing
+        this->GridNbVoxels[0] = vtkMath::Ceil(sizeX / this->GridSpacing[0]);
+        this->GridNbVoxels[1] = vtkMath::Ceil(sizeY / this->GridSpacing[1]);
+        this->GridNbVoxels[2] = vtkMath::Ceil(sizeZ / this->GridSpacing[2]);
+
+        if (this->GridNbVoxels[0] <= 0 || this->GridNbVoxels[1] <= 0 || this->GridNbVoxels[2] <= 0)
+        {
+          vtkErrorMacro("Grid spacing must not be bigger than the requested grid size");
+          return false;
+        }
+      }
+      else
+      {
+        if (this->GridPropertiesMode == ORIG_END_NBVOX)
+        {
+          // Compute the spacing according to the dimensions
+          this->GridSpacing[0] = sizeX / static_cast<double>(this->GridNbVoxels[0]);
+          this->GridSpacing[1] = sizeY / static_cast<double>(this->GridNbVoxels[1]);
+          this->GridSpacing[2] = sizeZ / static_cast<double>(this->GridNbVoxels[2]);
+
+          if (this->ForceCubicVoxels)
+          {
+            // Get the minimum spacing
+            double min = *std::min_element(this->GridSpacing, this->GridSpacing + 3);
+            for (int i = 0; i < 3; i++)
+            {
+              this->GridSpacing[i] = min;
+            }
+
+            // Compute the new number of voxels
+            this->GridNbVoxels[0] =  vtkMath::Ceil((this->GridEnd[0] - this->GridOrigin[0]) / this->GridSpacing[0]);
+            this->GridNbVoxels[1] =  vtkMath::Ceil((this->GridEnd[1] - this->GridOrigin[1]) / this->GridSpacing[1]);
+            this->GridNbVoxels[2] =  vtkMath::Ceil((this->GridEnd[2] - this->GridOrigin[2]) / this->GridSpacing[2]);
+          }
+        }
+      }
+    }
+  }
+
+
+  if (this->TilingSize[0] < 0
+      && this->TilingSize[1] < 0
+      && this->TilingSize[2] < 0)
+  {
+    vtkErrorMacro("Tiling size must be positive");
+    return false;
+  }
+  // Tiling cannot be bigger than grid number of voxels
+  for (int i = 0; i < 3; i++)
+  {
+    if (this->TilingSize[i] > this->GridNbVoxels[i])
+    {
+      this->TilingSize[i] = this->GridNbVoxels[i];
+    }
+  }
+  //PRINTA(GridOrigin,3);PRINTA(GridEnd,3);PRINTA(GridSpacing,3);PRINTA(GridNbVoxels,3);
+
+  return true;
+}
+
+//----------------------------------------------------------------------------
+int vtkCudaReconstructionFilter::Compute(vtkDoubleArray* outScalar)
 {
   std::vector<std::string> vtiList = help::ExtractAllFilePath(this->FilePathVTI);
   std::vector<std::string> krtdList = help::ExtractAllFilePath(this->FilePathKRTD);
 
   if (vtiList.size() == 0 || krtdList.size() < vtiList.size())
-    {
-    std::cerr << "Error : There is no enough vti files, please check your vtiList.txt and krtdList.txt" << std::endl;
-    return -1;
-    }
+  {
+    vtkErrorMacro("Error : There is no enough vti files, please check your "
+                  + std::string(this->DepthMapFile) + " and "
+                  + std::string(this->KRTDFile));
+    return 1;
+  }
 
-  ReconstructionData data0(vtiList[0], krtdList[0]);
+  ReconstructionData data0(vtiList[0].c_str(), krtdList[0].c_str());
   int* depthMapGrid = data0.GetDepthMap()->GetDimensions();
 
   // Initialize Cuda constant
-  CudaInitialize(this->GridMatrix, gridDims, gridOrig, gridSpacing,
-    this->RayPotentialThickness, this->RayPotentialRho,
-    this->RayPotentialEta, this->RayPotentialDelta, depthMapGrid, tilingDims);
+  CudaInitialize(this->GridMatrix, this->GridNbVoxels, this->GridOrigin, this->GridSpacing,
+                 this->RayPotentialThickness, this->RayPotentialRho, this->RayPotentialEta,
+                 this->RayPotentialDelta, depthMapGrid, this->TilingSize, this);
 
   bool result = ProcessDepthMap<double>(vtiList, krtdList, this->ThresholdBestCost,
-                                outScalar);
+                                        outScalar);
 
   return 0;
 }
 
-
 //----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::RequestInformation(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **inputVector,
-  vtkInformationVector *outputVector)
+void vtkCudaReconstructionFilter::CreateGridMatrixFromInput()
 {
-  // get the info objects
-  vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  vtkNew<vtkMatrix4x4> gridMatrix;
+  gridMatrix->Identity();
 
-  outInfo->Set(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(),
-               inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()),
-               6);
+  // Fill matrix
+  gridMatrix->SetElement(0, 0, this->GridVecX[0]);
+  gridMatrix->SetElement(0, 1, this->GridVecX[1]);
+  gridMatrix->SetElement(0, 2, this->GridVecX[2]);
+  gridMatrix->SetElement(1, 0, this->GridVecY[0]);
+  gridMatrix->SetElement(1, 1, this->GridVecY[1]);
+  gridMatrix->SetElement(1, 2, this->GridVecY[2]);
+  gridMatrix->SetElement(2, 0, this->GridVecZ[0]);
+  gridMatrix->SetElement(2, 1, this->GridVecZ[1]);
+  gridMatrix->SetElement(2, 2, this->GridVecZ[2]);
 
-  return 1;
+  this->SetGridMatrix(gridMatrix.Get());
 }
 
 //----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::RequestUpdateExtent(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **inputVector,
-  vtkInformationVector *outputVector)
+void vtkCudaReconstructionFilter::WriteSummaryFile()
 {
-  return 1;
-}
+  std::string path = std::string(this->DataFolder) + "/Reconstruction_summary.txt";
+  std::ofstream output(path.c_str());
+  std::string file = "";
 
-//----------------------------------------------------------------------------
-void vtkCudaReconstructionFilter::PrintSelf(ostream& os, vtkIndent indent)
-{
-  this->Superclass::PrintSelf(os,indent);
+  output << "----------------------" << std::endl;
+  output << "** OUTPUT GRID :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Origin     : ( " << this->GridOrigin[0] << ", " << this->GridOrigin[1] << ", " << this->GridOrigin[2] << " )" << std::endl;
+  output << "--- End        : ( " << this->GridEnd[0] << ", " << this->GridEnd[1] << ", " << this->GridEnd[2] << " )" << std::endl;
+  output << "--- Dimensions : ( " << this->GridNbVoxels[0] << ", " << this->GridNbVoxels[1] << ", " << this->GridNbVoxels[2] << " )" << std::endl;
+  output << "--- Spacing    : ( " << this->GridSpacing[0] << ", " << this->GridSpacing[1] << ", " << this->GridSpacing[2] << " )" << std::endl;
+  output << "--- Nb voxels  : " << this->GridNbVoxels[0] * this->GridNbVoxels[1] * this->GridNbVoxels[2] << std::endl;
+  output << "--- Real volume size : ( " << (this->GridEnd[0] - this->GridOrigin[0]) << ", " << (this->GridEnd[1] - this->GridOrigin[1]) << ", " << (this->GridEnd[2] - this->GridOrigin[2]) << ")" << std::endl;
+  output << "--- Matrix :" << std::endl;
+  output << this->GridVecX[0] << this->GridVecY[0] << this->GridVecZ[0] << std::endl;
+  output << this->GridVecX[1] << this->GridVecY[1] << this->GridVecZ[1] << std::endl;
+  output << this->GridVecX[2] << this->GridVecY[2] << this->GridVecZ[2] << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** DEPTH MAP :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Threshold for BestCost  : " << this->ThresholdBestCost << std::endl;
+  output << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** CUDA :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Thickness ray potential : " << this->RayPotentialThickness << std::endl;
+  output << "--- Rho ray potential :       " << this->RayPotentialRho << std::endl;
+  output << "--- Eta ray potential :       " << this->RayPotentialEta << std::endl;
+  output << "--- Delta ray potential :     " << this->RayPotentialDelta << std::endl;
+  output << std::endl;
+  output << "----------------------" << std::endl;
+  output << "** TIME :" << std::endl;
+  output << "----------------------" << std::endl;
+  output << "--- Reconstruction : " << this->ExecutionTime << " s" << std::endl;
+  output << std::endl;
 
-  //os << indent << "Depth Map: " << this->DepthMap << "\n";
+  output << file;
+  output.close();
 }

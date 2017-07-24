@@ -49,8 +49,7 @@ class vtkCudaReconstructionFilter : public vtkImageAlgorithm
 {
 public:
   static vtkCudaReconstructionFilter *New();
-  vtkTypeMacro(vtkCudaReconstructionFilter,vtkImageAlgorithm);
-  void PrintSelf(ostream& os, vtkIndent indent);
+  vtkTypeMacro(vtkCudaReconstructionFilter, vtkImageAlgorithm);
 
   // Description:
   // Define the thickness threshold (X axis) of the ray potential function when using cuda
@@ -76,8 +75,47 @@ public:
   // vti files have to be in the same folder as FilePathVTI
   vtkSetStringMacro(FilePathVTI);
   // Description :
+  // Set the data folder
+  vtkSetStringMacro(DataFolder);
+  // Description :
+  // Set the depth map file container
+  vtkSetStringMacro(DepthMapFile);
+  // Description :
+  // Set the KRTD file container
+  vtkSetStringMacro(KRTDFile);
+  // Description :
   // Define voxel tiling in each dimension
-  vtkSetVector3Macro(TilingDims, int);
+  vtkSetVector3Macro(TilingSize, int);
+  // Description :
+  // Define grid end 3D coordinates
+  vtkSetVector3Macro(GridEnd, double);
+  // Description :
+  // Define grid origin 3D coordinates
+  vtkSetVector3Macro(GridOrigin, double);
+  // Description :
+  // Define grid spacing in each dimension
+  vtkSetVector3Macro(GridSpacing, double);
+  // Description :
+  // Define grid dimensions
+  vtkSetVector3Macro(GridNbVoxels, int);
+  // Description :
+  // Define grid X direction
+  vtkSetVector3Macro(GridVecX, double);
+  // Description :
+  // Define grid Y direction
+  vtkSetVector3Macro(GridVecY, double);
+  // Description :
+  // Define grid Z direction
+  vtkSetVector3Macro(GridVecZ, double);
+  // Description :
+  // Set whether or not to write the summary
+  vtkSetMacro(WriteSummary, bool);
+  // Description :
+  // Set whether or not to force cubic voxels
+  vtkSetMacro(ForceCubicVoxels, bool);
+  // Description :
+  // Sets a value which specifies the 3 grid properties used
+  vtkSetMacro(GridPropertiesMode, int);
 
   //Description :
   // Get the execution time when update is launch (in seconds)
@@ -88,39 +126,60 @@ public:
   // to the right axis
   void SetGridMatrix(vtkMatrix4x4 *gridMatrix);
 
-//BTX
+
 protected:
   vtkCudaReconstructionFilter();
   ~vtkCudaReconstructionFilter();
 
   virtual int RequestData(vtkInformation *, vtkInformationVector **,
     vtkInformationVector *);
-  virtual int RequestInformation(vtkInformation *, vtkInformationVector **,
-    vtkInformationVector *);
-  virtual int RequestUpdateExtent(vtkInformation *, vtkInformationVector **,
-    vtkInformationVector *);
+
+  bool AreVectorsOrthogonal();
+  bool CheckArguments();
+  int Compute(vtkDoubleArray* outScalar);
+  // Write a file with all parameters used
+  void WriteSummaryFile();
+  void CreateGridMatrixFromInput();
 
 
-  int Compute(int gridDims[3], double gridOrig[3],
-              double gridSpacing[3], int tilingDims[3], vtkDoubleArray* outScalar);
-
-
-  vtkMatrix4x4 *GridMatrix;
-  double RayPotentialRho;
-  double RayPotentialThickness;
-  double RayPotentialEta;
-  double RayPotentialDelta;
-  double ThresholdBestCost;
-  double ExecutionTime;
+  bool ForceCubicVoxels;
+  bool WriteSummary;
+  const char* DataFolder;
+  const char* DepthMapFile;
+  //BTX
   const char* FilePathKRTD;
   const char* FilePathVTI;
-  int TilingDims[3];
+  //ETX
+  const char* KRTDFile;
+  double GridEnd[3];
+  double GridOrigin[3];
+  double GridSpacing[3];
+  double GridVecX[3];
+  double GridVecY[3];
+  double GridVecZ[3];
+  double ExecutionTime;
+  double RayPotentialDelta;
+  double RayPotentialEta;
+  double RayPotentialRho;
+  double RayPotentialThickness;
+  double ThresholdBestCost;
+  //BTX
+  enum GridPropertiesMode_t
+  {
+    DEFAULT_MODE, ORIG_END_NBVOX, ORIG_END_SPAC, ORIG_NBVOX_SPAC,
+    END_NBVOX_SPAC
+  };
+  //ETX
+  int GridPropertiesMode;
+  int GridNbVoxels[3];
+  int TilingSize[3];
+  //BTX
+  vtkMatrix4x4* GridMatrix;
+  //ETX
 
 private:
   vtkCudaReconstructionFilter(const vtkCudaReconstructionFilter&);  // Not implemented.
   void operator=(const vtkCudaReconstructionFilter&);  // Not implemented.
-
-//ETX
 };
 
 #endif

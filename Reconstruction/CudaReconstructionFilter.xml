@@ -1,0 +1,247 @@
+<ServerManagerConfiguration>
+  <ProxyGroup name="sources">
+    
+   <SourceProxy class="vtkCudaReconstructionFilter"
+                name="CudaReconstructionFilter" 
+                label="Cuda Reconstruction Filter">
+     
+     <DoubleVectorProperty 
+        name="Rho" 
+        command="SetRayPotentialRho" 
+        number_of_elements="1"
+        default_values="0.08">
+        <Documentation>
+        Defines the positive contribution (on the object) of the ray
+        potential function. *The value must be > 0.*
+        </Documentation>
+     </DoubleVectorProperty>
+
+     <DoubleVectorProperty 
+        name="Eta" 
+        command="SetRayPotentialEta" 
+        number_of_elements="1"
+        default_values="0.03">
+        <DoubleRangeDomain name="range" min="0.0" max="1.0" />
+        <Documentation>
+        Defines the negative contribution (in front of the object),
+        as a percentage of Rho, of the ray potential function.
+        *The value must be between 0 and 1.*
+        </Documentation>
+     </DoubleVectorProperty>
+     
+     <DoubleVectorProperty 
+        name="Delta"
+        command="SetRayPotentialDelta"
+        number_of_elements="1"
+        default_values="0.1">
+        <DoubleRangeDomain name="range" min="0.0" max="1.0" />
+        <Documentation>
+        Defines the distance just in front of the object, at which
+        the negative contribution becomes less important (Eta factor).
+        *The value must be between 0 and 1.*
+        </Documentation>
+     </DoubleVectorProperty>
+       
+     <DoubleVectorProperty 
+        name="Thickness" 
+        command="SetRayPotentialThickness" 
+        number_of_elements="1" 
+        default_values="0.08">
+        <Documentation>
+        Defines the ray potential function transition from -Rho to 0.
+        *The value must be between between 0 and delta.*
+        </Documentation>
+     </DoubleVectorProperty>
+     
+     
+     <DoubleVectorProperty 
+        name="Best Cost Threshold"
+        command="SetThresholdBestCost" 
+        number_of_elements="1"
+        default_values="0.3">
+     </DoubleVectorProperty>
+     
+    <IntVectorProperty
+        name="Mode"
+        command="SetGridPropertiesMode"
+        number_of_elements="1"
+        default_values="1">
+        <EnumerationDomain name="enum">
+        <Entry value="1" text="Origin / End / Nb Voxels"/>
+        <Entry value="2" text="Origin / End / Spacing"/>
+        <Entry value="3" text="Origin / Nb Voxels / Spacing"/>
+        <Entry value="4" text="End / Nb Voxels / Spacing"/>
+        </EnumerationDomain>
+        <Documentation>
+        Choose which 3 properties will be used to generate the grid.
+        The missing property in the list is computed from the 3 others.
+        </Documentation>
+    </IntVectorProperty>
+     
+     <DoubleVectorProperty 
+        name="Origin"
+        command="SetGridOrigin" 
+        number_of_elements="3"
+        default_values="0.0 0.0 0.0">
+        <Documentation>
+        Defines the voxel grid origin's 3D coordinates.
+        </Documentation>
+     </DoubleVectorProperty>
+     
+     <DoubleVectorProperty 
+        name="End" 
+        command="SetGridEnd" 
+        number_of_elements="3"
+        default_values="1.0 1.0 1.0">
+        <Documentation>
+        Defines the voxel grid end's 3D coordinates (*must be greater
+        than the grid's origin in each dimensions*).
+        </Documentation>
+     </DoubleVectorProperty>
+
+     <IntVectorProperty 
+        name="Number of voxels"
+        command="SetGridNbVoxels" 
+        number_of_elements="3"
+        default_values="300 300 300">
+        <Documentation>
+        Defines how many voxels there are in each dimension.
+        </Documentation>
+     </IntVectorProperty>
+
+     <DoubleVectorProperty 
+        name="Spacing" 
+        command="SetGridSpacing" 
+        number_of_elements="3"
+        default_values="0.1 0.1 0.1">
+        <Documentation>
+        Defines the side lengths of the voxels in each dimension.
+        </Documentation>
+     </DoubleVectorProperty>
+       
+     
+     <DoubleVectorProperty 
+        name="X Vector" 
+        command="SetGridVecX" 
+        number_of_elements="3"
+        default_values="1.0 0.0 0.0"
+        panel_visibility="advanced">
+     </DoubleVectorProperty>
+     
+     <DoubleVectorProperty 
+        name="Y Vector" 
+        command="SetGridVecY" 
+        number_of_elements="3"
+        default_values="0.0 1.0 0.0"
+        panel_visibility="advanced">
+     </DoubleVectorProperty>
+     
+     <DoubleVectorProperty 
+        name="Z Vector" 
+        command="SetGridVecZ" 
+        number_of_elements="3"
+        default_values="0.0 0.0 1.0"
+        panel_visibility="advanced">
+     </DoubleVectorProperty>
+     
+     
+     <StringVectorProperty 
+        name="Data Folder" 
+        command="SetDataFolder" 
+        number_of_elements="1"
+        default_values="/home/baptistep/Documents/ressources/DepthMaps/">
+        <FileListDomain name="files"/>
+        <Hints>
+             <UseDirectoryName />
+        </Hints>
+     </StringVectorProperty> 
+     
+     <StringVectorProperty 
+        name="Depth Map List File" 
+        command="SetDepthMapFile" 
+        number_of_elements="1"
+        default_values="vtiList.txt">
+        <Documentation>
+        Name of the file in the Data Folder which contains the list of vti files.
+        </Documentation>
+     </StringVectorProperty>
+     
+     <StringVectorProperty 
+        name="KRTD List File" 
+        command="SetKRTDFile" 
+        number_of_elements="1"
+        default_values="kList.txt">
+        <Documentation>
+        Name of the file in the Data Folder which contains the list of KRTD files.
+        </Documentation>
+     </StringVectorProperty>
+     
+     <IntVectorProperty 
+        name="Tiling Size" 
+        command="SetTilingSize" 
+        number_of_elements="3"
+        default_values="0 0 0"
+        panel_visibility="advanced">
+        <Documentation>
+        Specify a custom voxel tiling size for parallel GPU computing.
+-       The default behaviour (values set to 0,0,0) is to evaluate the
+        number of GPUs available. The grid is then cut in the Z dimension
+        to create as many tiles as GPUs. If those tiles do not fit 80% of 
+        the lowest GPU memory available, the tiles are successively cut in
+        half in each dimension (starting from Z) until they do.
+-       Once the tile size is computed or specified by the user, the
+        computing is done in parallel for as many tiles at a time as
+        possible (the process is repeated as needed if there are some tiles 
+        remaining).
+        </Documentation>
+     </IntVectorProperty>
+
+     <IntVectorProperty 
+        name="Write Summary" 
+        command="SetWriteSummary"
+        number_of_elements="1"
+        default_values="0">
+        <BooleanDomain name="bool"/>
+        <Documentation>
+        Write a summary text file in the data folder which contains all used
+        parameters.
+        </Documentation>
+     </IntVectorProperty>
+     
+      <IntVectorProperty 
+        name="Force Cubic Voxels" 
+        command="SetForceCubicVoxels" 
+        number_of_elements="1"
+        default_values="0">
+        <BooleanDomain name="bool"/>
+        <Documentation>
+        Changes the voxels to be cubes which side length is equal to the minimum
+        spacing. The new voxel grid becomes less or equal to the original grid in
+        3D space coverage.
+        </Documentation>
+      </IntVectorProperty>
+     
+     <PropertyGroup
+        label="Ray Potential">
+        <Property name="Thickness"/>
+        <Property name="Eta"/>
+        <Property name="Delta"/>
+        <Property name="Rho"/>
+     </PropertyGroup>
+
+     <PropertyGroup
+        label="Grid Properties">
+        <Property name="Mode"/>
+        <Property name="Origin"/>
+        <Property name="End"/>
+        <Property name="Number of voxels"/>
+        <Property name="Spacing"/>
+        <Property name="X Vector"/>
+        <Property name="Y Vector"/>
+        <Property name="Z Vector"/>
+     </PropertyGroup>
+
+   </SourceProxy>
+
+  </ProxyGroup>
+</ServerManagerConfiguration>
