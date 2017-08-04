@@ -30,11 +30,12 @@
 
 #include "ReconstructionData.h"
 
-#include "vtkCell.h"
-#include "vtkCellData.h"
-#include "vtkCommand.h"
-#include "vtkDataSet.h"
+//#include "vtkCell.h"
+//#include "vtkCellData.h"
+//#include "vtkCommand.h"
+//#include "vtkDataSet.h"
 #include "vtkDoubleArray.h"
+#include "vtkExtentTranslator.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
@@ -42,44 +43,51 @@
 #include "vtkMathUtilities.h"
 #include "vtkMatrix3x3.h"
 #include "vtkMatrix4x4.h"
+#include "vtkMultiBlockDataSet.h"
 #include "vtkNew.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
-#include "vtkStructuredGrid.h"
+//#include "vtkStructuredGrid.h"
 #include <vtksys/SystemInformation.hxx>
 #include <vtksys/SystemTools.hxx>
-#include "vtkTransform.h"
+//#include "vtkTransform.h"
 #include "vtkXMLImageDataReader.h"
+#include "vtkXMLImageDataWriter.h"
+#include "vtkXMLPImageDataWriter.h"
 
 #include "Helper.h"
 
 #include <cmath>
 #include <string>
-#include <sstream>
 #include <time.h>
 #include <vector>
-
-#define PRINTA(expr, N) std::cout << #expr " = "; for (int _i_=0; _i_ < N; _i_++){std::cout << (expr[_i_]) << "\t";} std::cout << std::endl;
 
 vtkStandardNewMacro(vtkCudaReconstructionFilter);
 vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatrix4x4);
 
 
-
 void CudaInitialize(vtkMatrix4x4* i_gridMatrix, int h_gridDims[3],
   double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick, double h_rayPRho,
-  double h_rayPEta, double h_rayPDelta, int h_depthMapDim[2], int h_tilingDims[3],
+  double h_rayPEta, double h_rayPDelta, int h_tilingDims[3], int h_depthMapDim[2],
   vtkCudaReconstructionFilter* ch_cudaFilter);
 
 template <typename TVolumetric>
 bool ProcessDepthMap(std::vector<std::string> vtiList,std::vector<std::string> krtdList,
-  double thresholdBestCost, vtkDoubleArray* io_scalar);
+  double thresholdBestCost, TVolumetric* io_scalar);
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 {
   this->SetNumberOfInputPorts(0);
+  this->SetNumberOfOutputPorts(1);
+
+  // create default translator
+  this->ExtentTranslator = vtkExtentTranslator::New();
+
+  this->PImageDataWriter = vtkXMLPImageDataWriter::New();
+
+  this->CurrentDate = 0;
   this->ForceCubicVoxels = false;
   this->WriteSummary = false;
   this->DataFolder = 0;
@@ -109,6 +117,7 @@ vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
   this->ThresholdBestCost = 0.0;
   this->GridPropertiesMode = DEFAULT_MODE;
   this->GridMatrix = 0;
+  this->ExecutionTime = -1;
 }
 
 //----------------------------------------------------------------------------
@@ -122,18 +131,73 @@ vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
 }
 
 //----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::RequestData(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **vtkNotUsed(inputVector),
-  vtkInformationVector *outputVector)
+int vtkCudaReconstructionFilter::ProcessRequest(
+  vtkInformation* request,
+  vtkInformationVector** inputVector,
+  vtkInformationVector* outputVector)
 {
-  this->ExecutionTime = -1;
-  clock_t start = clock();
+//  if (request->Has(vtkDemandDrivenPipeline::REQUEST_DATA()))
+//  {
+//    std::cout<<" * Request data * "<<std::endl<<std::endl;
+//  }
+
+//  if(request->Has(vtkStreamingDemandDrivenPipeline::REQUEST_UPDATE_EXTENT()))
+//  {
+//    std::cout<<" * Request update extent * "<<std::endl<<std::endl;
+//  }
+
+//  if(request->Has(vtkStreamingDemandDrivenPipeline::REQUEST_INFORMATION()))
+//  {
+//    std::cout<<" * Request information * "<<std::endl<<std::endl;
+//  }
+
+  return this->Superclass::ProcessRequest(request, inputVector, outputVector);
+}
+
+//----------------------------------------------------------------------------
+int vtkCudaReconstructionFilter::RequestInformation(
+  vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** vtkNotUsed(inputVector),
+  vtkInformationVector* outputVector)
+{
+  this->ExecutionTime = clock();
 
   if (!this->CheckArguments())
   {
     return 0;
   }
+
+  // Get the output data object
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
+  vtkImageData *output =
+    vtkImageData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(),
+               0, this->GridNbVoxels[0] - 1,
+               0, this->GridNbVoxels[1] - 1,
+               0, this->GridNbVoxels[2] - 1);
+
+  output->SetSpacing(this->GridSpacing);
+  output->SetOrigin(this->GridOrigin);
+
+  // Use Estimated size and free memory to determine how many pieces are needed
+  size_t estimatedSize = static_cast<size_t>(this->GridNbVoxels[0])
+                         * this->GridNbVoxels[1] * this->GridNbVoxels[2] * sizeof(double);
+  std::cout << "Estimated size (kiB) : " << estimatedSize << std::endl;
+  vtksys::SystemInformation sysInfo;
+  size_t availableSize = (sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024;
+  std::cout << "Available size (kiB) : " << availableSize << std::endl;
+  double ratio = static_cast<double>(estimatedSize) / static_cast<double>(availableSize);
+  int nbPieces = vtkMath::Ceil(ratio);
+  std::cout << "nbPieces : " << nbPieces << std::endl;
+
+  // Set the extent translator's properties
+  vtkExtentTranslator *translator = this->ExtentTranslator;
+  translator->SetWholeExtent(0, this->GridNbVoxels[0] - 1,
+                             0, this->GridNbVoxels[1] - 1,
+                             0, this->GridNbVoxels[2] - 1);
+  translator->SetPiece(0);
+  translator->SetNumberOfPieces(nbPieces);
 
   // Set the KRTD and VTI file paths
   std::string dmapGlobalFile = std::string(this->DataFolder) + "/" + std::string(this->DepthMapFile);
@@ -143,53 +207,118 @@ int vtkCudaReconstructionFilter::RequestData(
 
   this->CreateGridMatrixFromInput();
 
-  // get the info objects
-  vtkInformation *outGridInfo = outputVector->GetInformationObject(0);
+  this->SetCurrentDate(vtksys::SystemTools::GetCurrentDateTime("%d.%m.%Y-%Hh%M").c_str());
 
-  // get the input and output
-  vtkImageData *outGrid = vtkImageData::SafeDownCast(
-    outGridInfo->Get(vtkDataObject::DATA_OBJECT()));
+  return 1;
+}
 
-  // Generate grid from arguments
-  // We need (N+1)x(N+1)x(N+1) in dimensions to get NxNxN voxels
-  outGrid->SetDimensions(this->GridNbVoxels[0] + 1, this->GridNbVoxels[1] + 1, this->GridNbVoxels[2] + 1);
-  outGrid->SetSpacing(this->GridSpacing);
-  outGrid->SetOrigin(this->GridOrigin);
+//----------------------------------------------------------------------------
+int vtkCudaReconstructionFilter::RequestData(
+  vtkInformation *request,
+  vtkInformationVector **vtkNotUsed(inputVector),
+  vtkInformationVector *outputVector)
+{
 
-  vtkNew<vtkDoubleArray> outScalar;
-  outScalar->SetName("reconstruction_scalar");
-  outScalar->SetNumberOfComponents(1);
+  // Get the output data object
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
+  vtkImageData *output =
+    vtkImageData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  // Get system information
-  vtksys::SystemInformation sysInfo;
-  //std::cout << "ALLOC SIZE (GiB) : " << static_cast<double>(outGrid->GetNumberOfCells() * sizeof(double)) / (1024 * 1024 * 1024) << std::endl;
-  //std::cout << "FREE RAM (GiB) : " << static_cast<double>(sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) / (1024 * 1024) << std::endl;
+  vtkExtentTranslator *translator = this->ExtentTranslator;
 
-  // initialize output
-  if (outGrid->GetNumberOfCells() * sizeof(double) < (sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024)
+  int *outExt = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT());
+
+  std::cout << "Piece : " << translator->GetPiece() + 1 << "/"
+            << translator->GetNumberOfPieces() << std::endl;
+
+  if (translator->GetNumberOfPieces() > 1 && translator->GetPiece() == 0)
   {
-    outScalar->SetNumberOfTuples(outGrid->GetNumberOfCells());
-  }
-  else
-  {
-    outScalar->SetNumberOfTuples(0);
+    vtkOutputWindowDisplayDebugText("Not enough available memory to allocate the whole grid at once."
+                                    "\nWriting the pieces to disk.\n");
   }
 
-  outScalar->FillComponent(0, 0);
-  outGrid->GetCellData()->AddArray(outScalar.Get());
+  // Allocate and initialize the output scalars
+  output->SetExtent(outExt);
+  output->AllocateScalars(VTK_DOUBLE, 1);
+  output->GetPointData()->GetScalars()->FillComponent(0, 0.0);
+  output->GetPointData()->GetScalars()->SetName("reconstruction_scalar");
+  output->GetPointData()->SetActiveScalars("reconstruction_scalar");
 
-  if (this->Compute(outScalar.Get()) != 0)
+  double* outScalar = static_cast<double *>(output->GetScalarPointerForExtent(outExt));
+
+  int pieceNbVoxels[3];
+  pieceNbVoxels[0] = outExt[1] - outExt[0] + 1;
+  pieceNbVoxels[1] = outExt[3] - outExt[2] + 1;
+  pieceNbVoxels[2] = outExt[5] - outExt[4] + 1;
+
+  double pieceOrigin[3];
+  for (int i = 0; i < 3; i++)
+  {
+    pieceOrigin[i] = this->GridOrigin[i] + outExt[2*i] * this->GridSpacing[i];
+  }
+
+  std::stringstream ss;
+  ss << "Processing piece " << translator->GetPiece() << "/"
+     << translator->GetNumberOfPieces();
+  this->SetProgressText(ss.str().c_str());
+
+  // Compute the reconstruction by cuda on the current piece
+  if (this->Compute(outScalar, pieceNbVoxels, pieceOrigin) != 0)
   {
     return 0;
   }
 
-  clock_t end = clock();
-  this->ExecutionTime = double(end - start) / CLOCKS_PER_SEC;
-
-  if (this->WriteSummary)
+  // Write pieces to disk if they cannot fit in memory
+  if (translator->GetNumberOfPieces() > 1)
   {
-    this->WriteSummaryFile();
+    vtkNew<vtkXMLImageDataWriter> writer;
+    std::stringstream outputFileName;
+    outputFileName << "Reconstruction_output_" << this->CurrentDate
+                   << "_" << translator->GetPiece() << ".vti";
+    writer->SetInputData(output);
+    writer->SetFileName(outputFileName.str().c_str());
+    writer->Write();
   }
+
+  // Last piece has been processed
+  if (translator->GetPiece() + 1 == translator->GetNumberOfPieces())
+  {
+    clock_t end = clock();
+    this->ExecutionTime = double(end - ExecutionTime) / CLOCKS_PER_SEC;
+    std::cout << "Execution time : " << ExecutionTime << " s" << std::endl;
+
+    if (this->WriteSummary)
+    {
+      this->WriteSummaryFile();
+    }
+
+    return 1;
+  }
+
+  output->GetPointData()->RemoveArray(0);
+  translator->SetPiece(translator->GetPiece() + 1);
+
+  return 1;
+}
+
+//-----------------------------------------------------------------------------
+int vtkCudaReconstructionFilter::RequestUpdateExtent(
+  vtkInformation *request,
+  vtkInformationVector **vtkNotUsed(inputVector),
+  vtkInformationVector *outputVector)
+{
+  // Get the output data object
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
+
+  vtkExtentTranslator* translator = this->ExtentTranslator;
+
+  // Get the current piece's extent
+  int outExt[6];
+  if (translator->PieceToExtentByPoints())
+  {
+    translator->GetExtent(outExt);
+  }
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(), outExt, 6);
 
   return 1;
 }
@@ -391,66 +520,68 @@ bool vtkCudaReconstructionFilter::CheckArguments()
     this->GridOrigin[1] = this->GridEnd[1] - (this->GridSpacing[1] * this->GridNbVoxels[1]);
     this->GridOrigin[2] = this->GridEnd[2] - (this->GridSpacing[2] * this->GridNbVoxels[2]);
   }
+  else if (this->GridPropertiesMode == ORIG_NBVOX_SPAC)
+  {
+    // Grid end has to be computed
+    this->GridEnd[0] = this->GridOrigin[0] + (this->GridSpacing[0] * this->GridNbVoxels[0]);
+    this->GridEnd[1] = this->GridOrigin[1] + (this->GridSpacing[1] * this->GridNbVoxels[1]);
+    this->GridEnd[2] = this->GridOrigin[2] + (this->GridSpacing[2] * this->GridNbVoxels[2]);
+  }
   else
   {
-    if (this->GridPropertiesMode == ORIG_NBVOX_SPAC)
+    // Get the requested grid size on each axis
+    double sizeX = this->GridEnd[0] - this->GridOrigin[0];
+    double sizeY = this->GridEnd[1] - this->GridOrigin[1];
+    double sizeZ = this->GridEnd[2] - this->GridOrigin[2];
+
+    if (sizeX <= 0.0 || sizeY <= 0.0 || sizeZ <= 0.0)
     {
-      // Grid end has to be computed
-      this->GridEnd[0] = this->GridOrigin[0] + (this->GridSpacing[0] * this->GridNbVoxels[0]);
-      this->GridEnd[1] = this->GridOrigin[1] + (this->GridSpacing[1] * this->GridNbVoxels[1]);
-      this->GridEnd[2] = this->GridOrigin[2] + (this->GridSpacing[2] * this->GridNbVoxels[2]);
+      vtkErrorMacro("Grid end coordinates must be greater than the grid origin's");
+      return false;
+    }
+
+    if (this->GridPropertiesMode == ORIG_END_SPAC)
+    {
+      // Compute the number of voxels accord to the spacing
+      this->GridNbVoxels[0] = vtkMath::Ceil(sizeX / this->GridSpacing[0]);
+      this->GridNbVoxels[1] = vtkMath::Ceil(sizeY / this->GridSpacing[1]);
+      this->GridNbVoxels[2] = vtkMath::Ceil(sizeZ / this->GridSpacing[2]);
+
+      if (this->GridNbVoxels[0] <= 0 || this->GridNbVoxels[1] <= 0 || this->GridNbVoxels[2] <= 0)
+      {
+        vtkErrorMacro("Grid spacing must not be bigger than the requested grid size");
+        return false;
+      }
+    }
+    else if (this->GridPropertiesMode == ORIG_END_NBVOX)
+    {
+      // Compute the spacing according to the dimensions
+      this->GridSpacing[0] = sizeX / static_cast<double>(this->GridNbVoxels[0]);
+      this->GridSpacing[1] = sizeY / static_cast<double>(this->GridNbVoxels[1]);
+      this->GridSpacing[2] = sizeZ / static_cast<double>(this->GridNbVoxels[2]);
+
+      if (this->ForceCubicVoxels)
+      {
+        // Get the minimum spacing
+        double min = *std::min_element(this->GridSpacing, this->GridSpacing + 3);
+        for (int i = 0; i < 3; i++)
+        {
+          this->GridSpacing[i] = min;
+        }
+
+        // Compute the new number of voxels
+        this->GridNbVoxels[0] =  vtkMath::Ceil((this->GridEnd[0] - this->GridOrigin[0])
+                                  / this->GridSpacing[0]);
+        this->GridNbVoxels[1] =  vtkMath::Ceil((this->GridEnd[1] - this->GridOrigin[1])
+                                  / this->GridSpacing[1]);
+        this->GridNbVoxels[2] =  vtkMath::Ceil((this->GridEnd[2] - this->GridOrigin[2])
+                                  / this->GridSpacing[2]);
+      }
     }
     else
     {
-      // Get the requested grid size on each axis
-      double sizeX = this->GridEnd[0] - this->GridOrigin[0];
-      double sizeY = this->GridEnd[1] - this->GridOrigin[1];
-      double sizeZ = this->GridEnd[2] - this->GridOrigin[2];
-
-      if (sizeX <= 0.0 || sizeY <= 0.0 || sizeZ <= 0.0)
-      {
-        vtkErrorMacro("Grid end coordinates must be greater than the grid origin's");
-        return false;
-      }
-
-      if (this->GridPropertiesMode == ORIG_END_SPAC)
-      {
-        // Compute the number of voxels accord to the spacing
-        this->GridNbVoxels[0] = vtkMath::Ceil(sizeX / this->GridSpacing[0]);
-        this->GridNbVoxels[1] = vtkMath::Ceil(sizeY / this->GridSpacing[1]);
-        this->GridNbVoxels[2] = vtkMath::Ceil(sizeZ / this->GridSpacing[2]);
-
-        if (this->GridNbVoxels[0] <= 0 || this->GridNbVoxels[1] <= 0 || this->GridNbVoxels[2] <= 0)
-        {
-          vtkErrorMacro("Grid spacing must not be bigger than the requested grid size");
-          return false;
-        }
-      }
-      else
-      {
-        if (this->GridPropertiesMode == ORIG_END_NBVOX)
-        {
-          // Compute the spacing according to the dimensions
-          this->GridSpacing[0] = sizeX / static_cast<double>(this->GridNbVoxels[0]);
-          this->GridSpacing[1] = sizeY / static_cast<double>(this->GridNbVoxels[1]);
-          this->GridSpacing[2] = sizeZ / static_cast<double>(this->GridNbVoxels[2]);
-
-          if (this->ForceCubicVoxels)
-          {
-            // Get the minimum spacing
-            double min = *std::min_element(this->GridSpacing, this->GridSpacing + 3);
-            for (int i = 0; i < 3; i++)
-            {
-              this->GridSpacing[i] = min;
-            }
-
-            // Compute the new number of voxels
-            this->GridNbVoxels[0] =  vtkMath::Ceil((this->GridEnd[0] - this->GridOrigin[0]) / this->GridSpacing[0]);
-            this->GridNbVoxels[1] =  vtkMath::Ceil((this->GridEnd[1] - this->GridOrigin[1]) / this->GridSpacing[1]);
-            this->GridNbVoxels[2] =  vtkMath::Ceil((this->GridEnd[2] - this->GridOrigin[2]) / this->GridSpacing[2]);
-          }
-        }
-      }
+      vtkErrorMacro("Wrong GridPropertiesMode value");
+      return false;
     }
   }
 
@@ -470,13 +601,13 @@ bool vtkCudaReconstructionFilter::CheckArguments()
       this->TilingSize[i] = this->GridNbVoxels[i];
     }
   }
-  //PRINTA(GridOrigin,3);PRINTA(GridEnd,3);PRINTA(GridSpacing,3);PRINTA(GridNbVoxels,3);
 
   return true;
 }
 
 //----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::Compute(vtkDoubleArray* outScalar)
+//int vtkCudaReconstructionFilter::Compute(vtkDoubleArray* outScalar)
+int vtkCudaReconstructionFilter::Compute(double* outScalar, int pieceNbVoxels[3], double pieceOrigin[3])
 {
   std::vector<std::string> vtiList = help::ExtractAllFilePath(this->FilePathVTI);
   std::vector<std::string> krtdList = help::ExtractAllFilePath(this->FilePathKRTD);
@@ -493,9 +624,9 @@ int vtkCudaReconstructionFilter::Compute(vtkDoubleArray* outScalar)
   int* depthMapGrid = data0.GetDepthMap()->GetDimensions();
 
   // Initialize Cuda constant
-  CudaInitialize(this->GridMatrix, this->GridNbVoxels, this->GridOrigin, this->GridSpacing,
+  CudaInitialize(this->GridMatrix, pieceNbVoxels, pieceOrigin, this->GridSpacing,
                  this->RayPotentialThickness, this->RayPotentialRho, this->RayPotentialEta,
-                 this->RayPotentialDelta, depthMapGrid, this->TilingSize, this);
+                 this->RayPotentialDelta, this->TilingSize, depthMapGrid, this);
 
   bool result = ProcessDepthMap<double>(vtiList, krtdList, this->ThresholdBestCost,
                                         outScalar);
@@ -526,19 +657,27 @@ void vtkCudaReconstructionFilter::CreateGridMatrixFromInput()
 //----------------------------------------------------------------------------
 void vtkCudaReconstructionFilter::WriteSummaryFile()
 {
-  std::string path = std::string(this->DataFolder) + "/Reconstruction_summary.txt";
+  std::string path = std::string(this->DataFolder) + "/Reconstruction_summary"
+                     + this->CurrentDate + ".txt";
   std::ofstream output(path.c_str());
   std::string file = "";
 
   output << "----------------------" << std::endl;
   output << "** OUTPUT GRID :" << std::endl;
   output << "----------------------" << std::endl;
-  output << "--- Origin     : ( " << this->GridOrigin[0] << ", " << this->GridOrigin[1] << ", " << this->GridOrigin[2] << " )" << std::endl;
-  output << "--- End        : ( " << this->GridEnd[0] << ", " << this->GridEnd[1] << ", " << this->GridEnd[2] << " )" << std::endl;
-  output << "--- Dimensions : ( " << this->GridNbVoxels[0] << ", " << this->GridNbVoxels[1] << ", " << this->GridNbVoxels[2] << " )" << std::endl;
-  output << "--- Spacing    : ( " << this->GridSpacing[0] << ", " << this->GridSpacing[1] << ", " << this->GridSpacing[2] << " )" << std::endl;
-  output << "--- Nb voxels  : " << this->GridNbVoxels[0] * this->GridNbVoxels[1] * this->GridNbVoxels[2] << std::endl;
-  output << "--- Real volume size : ( " << (this->GridEnd[0] - this->GridOrigin[0]) << ", " << (this->GridEnd[1] - this->GridOrigin[1]) << ", " << (this->GridEnd[2] - this->GridOrigin[2]) << ")" << std::endl;
+  output << "--- Origin     : ( " << this->GridOrigin[0]<< ", " << this->GridOrigin[1]
+         << ", " << this->GridOrigin[2] << " )" << std::endl;
+  output << "--- End        : ( " << this->GridEnd[0] << ", " << this->GridEnd[1]
+         << ", " << this->GridEnd[2] << " )" << std::endl;
+  output << "--- Dimensions : ( " << this->GridNbVoxels[0] << ", "
+         << this->GridNbVoxels[1] << ", " << this->GridNbVoxels[2] << " )" << std::endl;
+  output << "--- Spacing    : ( " << this->GridSpacing[0] << ", "
+         << this->GridSpacing[1] << ", " << this->GridSpacing[2] << " )" << std::endl;
+  output << "--- Nb voxels  : " << this->GridNbVoxels[0] * this->GridNbVoxels[1]
+         * this->GridNbVoxels[2] << std::endl;
+  output << "--- Real volume size : ( " << (this->GridEnd[0] - this->GridOrigin[0])
+         << ", " << (this->GridEnd[1] - this->GridOrigin[1]) << ", "
+         << (this->GridEnd[2] - this->GridOrigin[2]) << ")" << std::endl;
   output << "--- Matrix :" << std::endl;
   output << this->GridVecX[0] << this->GridVecY[0] << this->GridVecZ[0] << std::endl;
   output << this->GridVecX[1] << this->GridVecY[1] << this->GridVecZ[1] << std::endl;

@@ -41,9 +41,13 @@
 #include <vector>
 
 class vtkDoubleArray;
+class vtkExtentTranslator;
 class vtkImageData;
 class vtkMatrix3x3;
 class vtkMatrix4x4;
+class vtkMultiBlockDataSet;
+class vtkXMLMultiBlockDataWriter;
+class vtkXMLPImageDataWriter;
 
 class vtkCudaReconstructionFilter : public vtkImageAlgorithm
 {
@@ -67,6 +71,15 @@ public:
   // Threshold that will be applied on vtkImageData depth map according to BestCost
   vtkSetMacro(ThresholdBestCost, double);
   // Description :
+  // Set the execution date and time
+  vtkSetStringMacro(CurrentDate);
+  // Description :
+  // Set the data folder
+  vtkSetStringMacro(DataFolder);
+  // Description :
+  // Set the depth map file container
+  vtkSetStringMacro(DepthMapFile);
+  // Description
   // Entire path to access file that contains all krtd file names
   // krtd files have to be in the same folder as FilePathKRTD
   vtkSetStringMacro(FilePathKRTD);
@@ -75,15 +88,8 @@ public:
   // vti files have to be in the same folder as FilePathVTI
   vtkSetStringMacro(FilePathVTI);
   // Description :
-  // Set the data folder
-  vtkSetStringMacro(DataFolder);
-  // Description :
-  // Set the depth map file container
-  vtkSetStringMacro(DepthMapFile);
-  // Description :
   // Set the KRTD file container
   vtkSetStringMacro(KRTDFile);
-  // Description :
   // Define voxel tiling in each dimension
   vtkSetVector3Macro(TilingSize, int);
   // Description :
@@ -131,12 +137,22 @@ protected:
   vtkCudaReconstructionFilter();
   ~vtkCudaReconstructionFilter();
 
-  virtual int RequestData(vtkInformation *, vtkInformationVector **,
-    vtkInformationVector *);
+  int ProcessRequest(vtkInformation*,
+                     vtkInformationVector**,
+                     vtkInformationVector*);
+  virtual int RequestData(vtkInformation *,
+                          vtkInformationVector **,
+                          vtkInformationVector *);
+  virtual int RequestInformation(vtkInformation*,
+                                 vtkInformationVector**,
+                                 vtkInformationVector*);
+  virtual int RequestUpdateExtent(vtkInformation*,
+                                  vtkInformationVector**,
+                                  vtkInformationVector*);
 
   bool AreVectorsOrthogonal();
   bool CheckArguments();
-  int Compute(vtkDoubleArray* outScalar);
+  int Compute(double *outScalar, int pieceNbVoxels[3] , double pieceOrigin[3]);
   // Write a file with all parameters used
   void WriteSummaryFile();
   void CreateGridMatrixFromInput();
@@ -147,6 +163,7 @@ protected:
   const char* DataFolder;
   const char* DepthMapFile;
   //BTX
+  const char* CurrentDate;
   const char* FilePathKRTD;
   const char* FilePathVTI;
   //ETX
@@ -175,6 +192,8 @@ protected:
   int TilingSize[3];
   //BTX
   vtkMatrix4x4* GridMatrix;
+  vtkExtentTranslator* ExtentTranslator;
+  vtkXMLPImageDataWriter* PImageDataWriter;
   //ETX
 
 private:

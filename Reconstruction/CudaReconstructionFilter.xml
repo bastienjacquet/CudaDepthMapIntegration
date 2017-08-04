@@ -9,7 +9,7 @@
         name="Rho" 
         command="SetRayPotentialRho" 
         number_of_elements="1"
-        default_values="0.08">
+        default_values="0.8">
         <Documentation>
         Defines the positive contribution (on the object) of the ray
         potential function. *The value must be > 0.*
@@ -82,7 +82,7 @@
         name="Origin"
         command="SetGridOrigin" 
         number_of_elements="3"
-        default_values="0.0 0.0 0.0">
+        default_values="-1.0 -1.0 -1.0">
         <Documentation>
         Defines the voxel grid origin's 3D coordinates.
         </Documentation>
@@ -103,7 +103,7 @@
         name="Number of voxels"
         command="SetGridNbVoxels" 
         number_of_elements="3"
-        default_values="300 300 300">
+        default_values="100 100 100">
         <Documentation>
         Defines how many voxels there are in each dimension.
         </Documentation>
