@@ -189,7 +189,6 @@ int vtkCudaReconstructionFilter::RequestInformation(
   std::cout << "Available size (kiB) : " << availableSize << std::endl;
   double ratio = static_cast<double>(estimatedSize) / static_cast<double>(availableSize);
   int nbPieces = vtkMath::Ceil(ratio);
-  std::cout << "nbPieces : " << nbPieces << std::endl;
 
   // Set the extent translator's properties
   vtkExtentTranslator *translator = this->ExtentTranslator;
@@ -228,7 +227,7 @@ int vtkCudaReconstructionFilter::RequestData(
 
   int *outExt = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT());
 
-  std::cout << "Piece : " << translator->GetPiece() + 1 << "/"
+  std::cout << " * Piece : " << translator->GetPiece() + 1 << "/"
             << translator->GetNumberOfPieces() << std::endl;
 
   if (translator->GetNumberOfPieces() > 1 && translator->GetPiece() == 0)
@@ -258,7 +257,7 @@ int vtkCudaReconstructionFilter::RequestData(
   }
 
   std::stringstream ss;
-  ss << "Processing piece " << translator->GetPiece() << "/"
+  ss << "Processing piece " << translator->GetPiece() + 1 << "/"
      << translator->GetNumberOfPieces();
   this->SetProgressText(ss.str().c_str());
 
@@ -271,6 +270,8 @@ int vtkCudaReconstructionFilter::RequestData(
   // Write pieces to disk if they cannot fit in memory
   if (translator->GetNumberOfPieces() > 1)
   {
+    this->SetProgressText("Writing piece");
+
     vtkNew<vtkXMLImageDataWriter> writer;
     std::stringstream outputFileName;
     outputFileName << "Reconstruction_output_" << this->CurrentDate
