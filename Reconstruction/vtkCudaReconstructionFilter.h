@@ -38,16 +38,11 @@
 #include "vtkFiltersCoreModule.h" // For export macro
 #include "vtkImageAlgorithm.h"
 
-#include <vector>
-
 class vtkDoubleArray;
 class vtkExtentTranslator;
 class vtkImageData;
 class vtkMatrix3x3;
 class vtkMatrix4x4;
-class vtkMultiBlockDataSet;
-class vtkXMLMultiBlockDataWriter;
-class vtkXMLPImageDataWriter;
 
 class vtkCudaReconstructionFilter : public vtkImageAlgorithm
 {
@@ -71,6 +66,18 @@ public:
   // Threshold that will be applied on vtkImageData depth map according to BestCost
   vtkSetMacro(ThresholdBestCost, double);
   // Description :
+  // Set whether or not to write the summary
+  vtkSetMacro(WriteSummary, bool);
+  // Description :
+  // Set whether or not to force cubic voxels
+  vtkSetMacro(ForceCubicVoxels, bool);
+  // Description :
+  // Sets a value which specifies the 3 grid properties used
+  vtkSetMacro(GridPropertiesMode, int);
+  // Description :
+  // Sets a value which specifies the input depthmaps type
+  vtkSetMacro(DepthmapType, int);
+  // Description :
   // Set the execution date and time
   vtkSetStringMacro(CurrentDate);
   // Description :
@@ -90,6 +97,7 @@ public:
   // Description :
   // Set the KRTD file container
   vtkSetStringMacro(KRTDFile);
+  // Description :
   // Define voxel tiling in each dimension
   vtkSetVector3Macro(TilingSize, int);
   // Description :
@@ -113,15 +121,7 @@ public:
   // Description :
   // Define grid Z direction
   vtkSetVector3Macro(GridVecZ, double);
-  // Description :
-  // Set whether or not to write the summary
-  vtkSetMacro(WriteSummary, bool);
-  // Description :
-  // Set whether or not to force cubic voxels
-  vtkSetMacro(ForceCubicVoxels, bool);
-  // Description :
-  // Sets a value which specifies the 3 grid properties used
-  vtkSetMacro(GridPropertiesMode, int);
+
 
   //Description :
   // Get the execution time when update is launch (in seconds)
@@ -132,14 +132,15 @@ public:
   // to the right axis
   void SetGridMatrix(vtkMatrix4x4 *gridMatrix);
 
+  enum DepthmapType_t
+  {
+    STRUCTURE_FROM_MOTION, SPHERICAL
+  };
 
 protected:
   vtkCudaReconstructionFilter();
   ~vtkCudaReconstructionFilter();
 
-  int ProcessRequest(vtkInformation*,
-                     vtkInformationVector**,
-                     vtkInformationVector*);
   virtual int RequestData(vtkInformation *,
                           vtkInformationVector **,
                           vtkInformationVector *);
@@ -187,13 +188,13 @@ protected:
     END_NBVOX_SPAC
   };
   //ETX
+  int DepthmapType;
   int GridPropertiesMode;
   int GridNbVoxels[3];
   int TilingSize[3];
   //BTX
   vtkMatrix4x4* GridMatrix;
   vtkExtentTranslator* ExtentTranslator;
-  vtkXMLPImageDataWriter* PImageDataWriter;
   //ETX
 
 private:

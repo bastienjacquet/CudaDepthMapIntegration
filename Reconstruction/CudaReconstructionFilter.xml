@@ -4,6 +4,20 @@
    <SourceProxy class="vtkCudaReconstructionFilter"
                 name="CudaReconstructionFilter" 
                 label="Cuda Reconstruction Filter">
+
+    <IntVectorProperty
+        name="Depthmap Type"
+        command="SetDepthmapType"
+        number_of_elements="1"
+        default_values="1">
+        <EnumerationDomain name="enum">
+        <Entry value="0" text="Structure from motion"/>
+        <Entry value="1" text="Spherical"/>
+        </EnumerationDomain>
+        <Documentation>
+        Choose the input depthmaps type.
+        </Documentation>
+    </IntVectorProperty>
      
      <DoubleVectorProperty 
         name="Rho" 
@@ -59,6 +73,9 @@
         command="SetThresholdBestCost" 
         number_of_elements="1"
         default_values="0.3">
+        <Documentation>
+        *Not used in spherical depthmaps.*
+        </Documentation>
      </DoubleVectorProperty>
      
     <IntVectorProperty

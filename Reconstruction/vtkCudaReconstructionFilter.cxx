@@ -30,10 +30,6 @@
 
 #include "ReconstructionData.h"
 
-//#include "vtkCell.h"
-//#include "vtkCellData.h"
-//#include "vtkCommand.h"
-//#include "vtkDataSet.h"
 #include "vtkDoubleArray.h"
 #include "vtkExtentTranslator.h"
 #include "vtkImageData.h"
@@ -43,18 +39,12 @@
 #include "vtkMathUtilities.h"
 #include "vtkMatrix3x3.h"
 #include "vtkMatrix4x4.h"
-#include "vtkMultiBlockDataSet.h"
 #include "vtkNew.h"
-#include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
-//#include "vtkStructuredGrid.h"
 #include <vtksys/SystemInformation.hxx>
 #include <vtksys/SystemTools.hxx>
-//#include "vtkTransform.h"
-#include "vtkXMLImageDataReader.h"
 #include "vtkXMLImageDataWriter.h"
-#include "vtkXMLPImageDataWriter.h"
 
 #include "Helper.h"
 
@@ -70,7 +60,7 @@ vtkSetObjectImplementationMacro(vtkCudaReconstructionFilter, GridMatrix, vtkMatr
 void CudaInitialize(vtkMatrix4x4* i_gridMatrix, int h_gridDims[3],
   double h_gridOrig[3], double h_gridSpacing[3], double h_rayPThick, double h_rayPRho,
   double h_rayPEta, double h_rayPDelta, int h_tilingDims[3], int h_depthMapDim[2],
-  vtkCudaReconstructionFilter* ch_cudaFilter);
+  int h_depthMapType, vtkCudaReconstructionFilter* ch_cudaFilter);
 
 template <typename TVolumetric>
 bool ProcessDepthMap(std::vector<std::string> vtiList,std::vector<std::string> krtdList,
@@ -84,8 +74,6 @@ vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
 
   // create default translator
   this->ExtentTranslator = vtkExtentTranslator::New();
-
-  this->PImageDataWriter = vtkXMLPImageDataWriter::New();
 
   this->CurrentDate = 0;
   this->ForceCubicVoxels = false;
@@ -115,6 +103,7 @@ vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
   this->RayPotentialRho = 0.0;
   this->RayPotentialThickness = 0.0;
   this->ThresholdBestCost = 0.0;
+  this->DepthmapType = STRUCTURE_FROM_MOTION;
   this->GridPropertiesMode = DEFAULT_MODE;
   this->GridMatrix = 0;
   this->ExecutionTime = -1;
@@ -128,30 +117,9 @@ vtkCudaReconstructionFilter::~vtkCudaReconstructionFilter()
   this->GridMatrix = 0;
   this->DataFolder = 0;
   this->DepthMapFile = 0;
-}
 
-//----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::ProcessRequest(
-  vtkInformation* request,
-  vtkInformationVector** inputVector,
-  vtkInformationVector* outputVector)
-{
-//  if (request->Has(vtkDemandDrivenPipeline::REQUEST_DATA()))
-//  {
-//    std::cout<<" * Request data * "<<std::endl<<std::endl;
-//  }
-
-//  if(request->Has(vtkStreamingDemandDrivenPipeline::REQUEST_UPDATE_EXTENT()))
-//  {
-//    std::cout<<" * Request update extent * "<<std::endl<<std::endl;
-//  }
-
-//  if(request->Has(vtkStreamingDemandDrivenPipeline::REQUEST_INFORMATION()))
-//  {
-//    std::cout<<" * Request information * "<<std::endl<<std::endl;
-//  }
-
-  return this->Superclass::ProcessRequest(request, inputVector, outputVector);
+  this->ExtentTranslator->UnRegister(this);
+  this->ExtentTranslator = NULL;
 }
 
 //----------------------------------------------------------------------------
@@ -256,10 +224,10 @@ int vtkCudaReconstructionFilter::RequestData(
     pieceOrigin[i] = this->GridOrigin[i] + outExt[2*i] * this->GridSpacing[i];
   }
 
-  std::stringstream ss;
-  ss << "Processing piece " << translator->GetPiece() + 1 << "/"
+  std::stringstream progressText;
+  progressText << "Processing piece " << translator->GetPiece() + 1 << "/"
      << translator->GetNumberOfPieces();
-  this->SetProgressText(ss.str().c_str());
+  this->SetProgressText(progressText.str().c_str());
 
   // Compute the reconstruction by cuda on the current piece
   if (this->Compute(outScalar, pieceNbVoxels, pieceOrigin) != 0)
@@ -607,7 +575,6 @@ bool vtkCudaReconstructionFilter::CheckArguments()
 }
 
 //----------------------------------------------------------------------------
-//int vtkCudaReconstructionFilter::Compute(vtkDoubleArray* outScalar)
 int vtkCudaReconstructionFilter::Compute(double* outScalar, int pieceNbVoxels[3], double pieceOrigin[3])
 {
   std::vector<std::string> vtiList = help::ExtractAllFilePath(this->FilePathVTI);
@@ -622,12 +589,13 @@ int vtkCudaReconstructionFilter::Compute(double* outScalar, int pieceNbVoxels[3]
   }
 
   ReconstructionData data0(vtiList[0].c_str(), krtdList[0].c_str());
-  int* depthMapGrid = data0.GetDepthMap()->GetDimensions();
+  int depthMapGrid[3];
+  data0.GetDepthMap()->GetDimensions(depthMapGrid);
 
   // Initialize Cuda constant
   CudaInitialize(this->GridMatrix, pieceNbVoxels, pieceOrigin, this->GridSpacing,
                  this->RayPotentialThickness, this->RayPotentialRho, this->RayPotentialEta,
-                 this->RayPotentialDelta, this->TilingSize, depthMapGrid, this);
+                 this->RayPotentialDelta, this->TilingSize, depthMapGrid, this->DepthmapType, this);
 
   bool result = ProcessDepthMap<double>(vtiList, krtdList, this->ThresholdBestCost,
                                         outScalar);

@@ -57,7 +57,8 @@ ReconstructionData::ReconstructionData(const char* depthPathChar,
 {
   std::string depthPath(depthPathChar);
   std::string matrixPath(matrixPathChar);
-  // Read DEPTH MAP an fill this->DepthMap
+
+  // Read DEPTH MAP adn fill this->DepthMap
   this->DepthMap = vtkImageData::New();
   ReconstructionData::ReadDepthMap(depthPath, this->DepthMap);
 
@@ -81,7 +82,7 @@ ReconstructionData::ReconstructionData(const char* depthPathChar,
 ReconstructionData::ReconstructionData(std::string depthPath,
                                        std::string matrixPath)
 {
-  // Read DEPTH MAP an fill this->DepthMap
+  // Read DEPTH MAP and fill this->DepthMap
   this->DepthMap = vtkImageData::New();
   ReconstructionData::ReadDepthMap(depthPath, this->DepthMap);
 
