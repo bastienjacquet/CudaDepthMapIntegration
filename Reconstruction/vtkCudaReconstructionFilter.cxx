@@ -151,10 +151,10 @@ int vtkCudaReconstructionFilter::RequestInformation(
   // Use Estimated size and free memory to determine how many pieces are needed
   size_t estimatedSize = static_cast<size_t>(this->GridNbVoxels[0])
                          * this->GridNbVoxels[1] * this->GridNbVoxels[2] * sizeof(double);
-  std::cout << "Estimated size (kiB) : " << estimatedSize << std::endl;
+  //std::cout << "Estimated size (kiB) : " << estimatedSize << std::endl;
   vtksys::SystemInformation sysInfo;
   size_t availableSize = (sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024;
-  std::cout << "Available size (kiB) : " << availableSize << std::endl;
+  //std::cout << "Available size (kiB) : " << availableSize << std::endl;
   double ratio = static_cast<double>(estimatedSize) / static_cast<double>(availableSize);
   int nbPieces = vtkMath::Ceil(ratio);
 

@@ -307,15 +307,15 @@ __device__ int computeVoxelRelativeIDGrid(int coordinates[SizePoint3D])
   (third coordinate is not used)
 coordinates : 3D coordinates
 */
-//__device__ int computeVoxelIDDepth(int coordinates[SizePoint3D])
-//{
-//  int dimX = c_depthMapDims.x;
-//  //int dimY = c_depthMapDims.y;
-//  int x = coordinates[0];
-//  int y = coordinates[1];
-//  // /!\ vtkImageData has its origin at the bottom left, not top left
-//  return (dimX*(dimY-1-y)) + x;
-//}
+__device__ int computeVoxelIDDepth(int coordinates[SizePoint3D])
+{
+  int dimX = c_depthMapDims.x;
+  int dimY = c_depthMapDims.y;
+  int x = coordinates[0];
+  int y = coordinates[1];
+  // /!\ vtkImageData has its origin at the bottom left, not top left
+  return (dimX*(dimY-1-y)) + x;
+}
 
 
 // ----------------------------------------------------------------------------
@@ -559,7 +559,6 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   // Define useful constant values
   ReconstructionData data0(vtiList[0].c_str(), krtdList[0].c_str());
   int nbPixelOnDepthMap = data0.GetDepthMap()->GetNumberOfPoints();
-  //data0.GetMatrixTR()->PrintSelf(std::cout, vtkIndent());
 
   size_t nbVoxels = static_cast<size_t>(ch_gridNbVoxels[0]) * ch_gridNbVoxels[1] * ch_gridNbVoxels[2];
 
@@ -576,9 +575,9 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   TypeCompute* h_depthMap = new TypeCompute[nbPixelOnDepthMap];
 
   // Depthmap parameters
+  TypeCompute h_matrixRT[SizeMat4x4];
   // Structure from motion depthmaps
   TypeCompute h_matrixK[SizeMat4x4];
-  TypeCompute h_matrixRT[SizeMat4x4];
   // Spherical depthmaps
   int h_depthMapDimensions[3];
   TypeCompute h_depthMapOrigin[3];
@@ -637,7 +636,7 @@ bool ProcessDepthMap(std::vector<std::string> vtiList,
   dim3 dimBlock(h_tileNbVoxels[0], 1, 1); // nb threads on each block
   dim3 dimGrid(1, h_tileNbVoxels[1], h_tileNbVoxels[2]); // nb blocks on a grid
 
-
+  // Define how the tiles are processed
   int nbConcurrent = std::min(nbTiles, nbDevices);
   int nbSequential = vtkMath::Ceil(static_cast<double>(nbTiles) / nbConcurrent);
 

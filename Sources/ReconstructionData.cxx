@@ -172,10 +172,16 @@ void ReconstructionData::ApplyDepthThresholdFilter(double thresholdBestCost)
     vtkDoubleArray::SafeDownCast(this->DepthMap->GetPointData()->GetArray("Best Cost Values"));
 
   if (depths == NULL)
-    {
+  {
     std::cerr << "Error during threshold, depths is empty" << std::endl;
     return;
-    }
+  }
+
+  if (bestCost == NULL)
+  {
+    std::cerr << "Error during threshold, Best Cost Values is empty" << std::endl;
+    return;
+  }
 
   int nbTuples = depths->GetNumberOfTuples();
 
