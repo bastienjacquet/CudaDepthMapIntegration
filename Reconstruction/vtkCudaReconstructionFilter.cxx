@@ -44,6 +44,7 @@
 #include "vtkStreamingDemandDrivenPipeline.h"
 #include <vtksys/SystemInformation.hxx>
 #include <vtksys/SystemTools.hxx>
+#include "vtkUnsignedShortArray.h"
 #include "vtkXMLImageDataWriter.h"
 
 #include "Helper.h"
@@ -62,9 +63,12 @@ void CudaInitialize(vtkMatrix4x4* i_gridMatrix, int h_gridDims[3],
   double h_rayPEta, double h_rayPDelta, int h_tilingDims[3], int h_depthMapDim[2],
   int h_depthMapType, vtkCudaReconstructionFilter* ch_cudaFilter);
 
-template <typename TVolumetric>
-bool ProcessDepthMap(std::vector<std::string> vtiList,std::vector<std::string> krtdList,
-  double thresholdBestCost, TVolumetric* io_scalar);
+template <typename TVolumetric, typename TCount>
+bool ProcessDepthMap(std::vector<std::string> vtiList,
+                     std::vector<std::string> krtdList,
+                     double thresholdBestCost,
+                     TVolumetric *io_scalar,
+                     TCount* io_count);
 
 //----------------------------------------------------------------------------
 vtkCudaReconstructionFilter::vtkCudaReconstructionFilter()
@@ -150,7 +154,7 @@ int vtkCudaReconstructionFilter::RequestInformation(
 
   // Use Estimated size and free memory to determine how many pieces are needed
   size_t estimatedSize = static_cast<size_t>(this->GridNbVoxels[0])
-                         * this->GridNbVoxels[1] * this->GridNbVoxels[2] * sizeof(double);
+                         * this->GridNbVoxels[1] * this->GridNbVoxels[2] * sizeof(float);
   //std::cout << "Estimated size (kiB) : " << estimatedSize << std::endl;
   vtksys::SystemInformation sysInfo;
   size_t availableSize = (sysInfo.GetHostMemoryTotal() - sysInfo.GetHostMemoryUsed()) * 1024;
@@ -206,12 +210,23 @@ int vtkCudaReconstructionFilter::RequestData(
 
   // Allocate and initialize the output scalars
   output->SetExtent(outExt);
-  output->AllocateScalars(VTK_DOUBLE, 1);
+  output->AllocateScalars(VTK_FLOAT, 1);
   output->GetPointData()->GetScalars()->FillComponent(0, 0.0);
   output->GetPointData()->GetScalars()->SetName("reconstruction_scalar");
   output->GetPointData()->SetActiveScalars("reconstruction_scalar");
 
-  double* outScalar = static_cast<double *>(output->GetScalarPointerForExtent(outExt));
+  // Allocate and initialize the output scalars
+  vtkUnsignedShortArray* reconstruction_count = vtkUnsignedShortArray::New();
+  reconstruction_count->SetName("reconstruction_count");
+  reconstruction_count->SetNumberOfComponents(1);
+  reconstruction_count->SetNumberOfTuples(
+    output->GetPointData()->GetArray("reconstruction_scalar")->GetNumberOfTuples());
+  reconstruction_count->FillComponent(0, 0);
+
+  output->GetPointData()->AddArray(reconstruction_count);
+
+  float* outScalar = static_cast<float*>(output->GetScalarPointerForExtent(outExt));
+  unsigned short* outCount = reconstruction_count->GetPointer(0);
 
   int pieceNbVoxels[3];
   pieceNbVoxels[0] = outExt[1] - outExt[0] + 1;
@@ -230,7 +245,7 @@ int vtkCudaReconstructionFilter::RequestData(
   this->SetProgressText(progressText.str().c_str());
 
   // Compute the reconstruction by cuda on the current piece
-  if (this->Compute(outScalar, pieceNbVoxels, pieceOrigin) != 0)
+  if (this->Compute(outScalar, outCount, pieceNbVoxels, pieceOrigin) != 0)
   {
     return 0;
   }
@@ -575,7 +590,7 @@ bool vtkCudaReconstructionFilter::CheckArguments()
 }
 
 //----------------------------------------------------------------------------
-int vtkCudaReconstructionFilter::Compute(double* outScalar, int pieceNbVoxels[3], double pieceOrigin[3])
+int vtkCudaReconstructionFilter::Compute(float* outScalar, unsigned short* outCount, int pieceNbVoxels[3], double pieceOrigin[3])
 {
   std::vector<std::string> vtiList = help::ExtractAllFilePath(this->FilePathVTI);
   std::vector<std::string> krtdList = help::ExtractAllFilePath(this->FilePathKRTD);
@@ -588,6 +603,7 @@ int vtkCudaReconstructionFilter::Compute(double* outScalar, int pieceNbVoxels[3]
     return 1;
   }
 
+  // Initialize depthmaps dimensions (structure from motion)
   ReconstructionData data0(vtiList[0].c_str(), krtdList[0].c_str());
   int depthMapGrid[3];
   data0.GetDepthMap()->GetDimensions(depthMapGrid);
@@ -597,8 +613,8 @@ int vtkCudaReconstructionFilter::Compute(double* outScalar, int pieceNbVoxels[3]
                  this->RayPotentialThickness, this->RayPotentialRho, this->RayPotentialEta,
                  this->RayPotentialDelta, this->TilingSize, depthMapGrid, this->DepthmapType, this);
 
-  bool result = ProcessDepthMap<double>(vtiList, krtdList, this->ThresholdBestCost,
-                                        outScalar);
+  bool result = ProcessDepthMap<float, unsigned short>(vtiList, krtdList, this->ThresholdBestCost,
+                                        outScalar, outCount);
 
   return 0;
 }

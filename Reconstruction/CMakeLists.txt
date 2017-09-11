@@ -8,4 +8,5 @@ ADD_PARAVIEW_PLUGIN(CudaReconstructionFilter "1.0"
   SERVER_MANAGER_XML CudaReconstructionFilter.xml
   SERVER_MANAGER_SOURCES vtkCudaReconstructionFilter.cxx)
 
+target_link_libraries( CudaReconstructionLib ReconstructionDataLib )
 target_link_libraries( CudaReconstructionFilter PRIVATE ReconstructionDataLib CudaReconstructionLib ${VTK_LIBRARIES} )

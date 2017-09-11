@@ -153,7 +153,8 @@ protected:
 
   bool AreVectorsOrthogonal();
   bool CheckArguments();
-  int Compute(double *outScalar, int pieceNbVoxels[3] , double pieceOrigin[3]);
+  int Compute(float *outScalar, unsigned short* outCount, int pieceNbVoxels[3],
+              double pieceOrigin[3]);
   // Write a file with all parameters used
   void WriteSummaryFile();
   void CreateGridMatrixFromInput();
